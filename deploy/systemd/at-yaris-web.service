@@ -1,0 +1,18 @@
+[Unit]
+Description=AT Yaris Read-Only Web Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=at_yaris
+WorkingDirectory=/opt/at_yaris_tahmini
+EnvironmentFile=/opt/at_yaris_tahmini/.env
+ExecStart=/opt/at_yaris_tahmini/.venv/bin/uvicorn web_app:app --host ${WEB_HOST} --port ${WEB_PORT}
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/at_yaris_tahmini/web.log
+StandardError=append:/var/log/at_yaris_tahmini/web.err.log
+
+[Install]
+WantedBy=multi-user.target

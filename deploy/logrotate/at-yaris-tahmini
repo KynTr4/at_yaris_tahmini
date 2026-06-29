@@ -1,0 +1,9 @@
+/var/log/at_yaris_tahmini/*.log /var/log/at_yaris_tahmini/*.err.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

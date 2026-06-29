@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Tahminler{% endblock %}
+{% block content %}<div class="eyebrow">MODEL ÇIKTISI</div><h1 class="mb-4">Güncel tahminler</h1>
+<div class="panel table-responsive"><table class="table table-darkish align-middle">
+<thead><tr><th>Race</th><th>Başlangıç</th><th>At</th><th>Logistic</th><th>CatBoost</th><th>XGBoost</th><th>Ensemble</th><th>Rank</th><th>ΣP</th><th>Feature hash</th><th>Tahmin zamanı</th></tr></thead>
+<tbody>{% for p in predictions %}<tr><td class="mono">{{ p.race_id }}</td><td>{{ p.race_start_at }}</td><td>{{ p.horse_name }}</td><td>{{ '%.4f'|format(p.logistic_probability or 0) }}</td><td>{{ '%.4f'|format(p.catboost_probability or 0) }}</td><td>{{ '%.4f'|format(p.xgboost_probability or 0) }}</td><td class="accent">{{ '%.4f'|format(p.ensemble_probability or 0) }}</td><td>{{ p.predicted_rank }}</td><td class="{{ 'text-success' if p.probability_sum_valid else 'text-danger' }}">{{ p.probability_sum }}</td><td class="mono truncate">{{ p.feature_hash }}</td><td>{{ p.prediction_time }}</td></tr>{% else %}<tr><td colspan="11" class="empty">Arşivlenmiş tahmin bulunmuyor.</td></tr>{% endfor %}</tbody>
+</table></div>{% endblock %}

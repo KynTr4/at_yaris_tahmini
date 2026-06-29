@@ -1,0 +1,15 @@
+[Unit]
+Description=AT Yaris Five-Minute Global Live Result Refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=at_yaris
+WorkingDirectory=/opt/at_yaris_tahmini
+EnvironmentFile=/opt/at_yaris_tahmini/.env
+ExecStart=/opt/at_yaris_tahmini/.venv/bin/python run_results_update.py --today-tracks --country ALL --skip-monitor --live-status
+StandardOutput=append:/var/log/at_yaris_tahmini/results.log
+StandardError=append:/var/log/at_yaris_tahmini/results.err.log
+TimeoutStartSec=1900
+KillMode=control-group

@@ -1,0 +1,78 @@
+{% extends "base.html" %}{% block title %}Tahmin Performansı{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+  <div><div class="eyebrow">SONUÇ ANALİZİ</div><h1>Tahmin performansı</h1></div>
+  <div id="performance-loading" class="status-pill warn">YÜKLENİYOR</div>
+</div>
+
+<div id="live-results-panel" class="panel live-results-panel mb-4"><div><div class="eyebrow">GLOBAL SONUÇ KONTROLÜ</div><span>Son kontrol: <b data-live-checked>Henüz yok</b></span> · <span>Sonraki: <b data-live-next>—</b></span> · <span>Server: <b data-live-server>—</b></span></div><div class="live-state"><span data-live-status class="status-pill warn">BEKLİYOR</span><strong data-live-countdown>05:00</strong></div><div data-live-tracks class="live-track-list"></div></div>
+
+<form id="performance-filters" class="panel performance-filters mb-4">
+  <div><label for="filter-date">Tarih</label><input id="filter-date" name="date" type="date" class="form-control"></div>
+  <div><label for="filter-track">Hipodrom</label><select id="filter-track" name="track" class="form-select"><option value="">Tümü</option></select></div>
+  <div><label for="filter-model">Model</label><select id="filter-model" name="model" class="form-select"><option value="">Tümü</option><option>Logistic</option><option>CatBoost</option><option>XGBoost</option><option>Ensemble</option></select></div>
+  <div><label for="filter-outcome">Sonuç</label><select id="filter-outcome" name="outcome" class="form-select"><option value="all">Tümü</option><option value="correct">Sadece Doğrular</option><option value="incorrect">Sadece Yanlışlar</option></select></div>
+  <button class="btn btn-accent" type="submit">Uygula</button><button id="clear-filters" class="btn btn-outline-secondary" type="button">Temizle</button>
+</form>
+
+<section class="mb-4"><div class="eyebrow mb-2">TÜM PİSTLER · SONUÇ COVERAGE</div><div id="performance-track-coverage" class="row g-3"></div></section>
+
+<div id="summary-cards" class="row g-3 mb-4"></div>
+
+<section class="mb-4"><div class="eyebrow mb-2">MODEL KARŞILAŞTIRMA</div><div id="model-cards" class="row g-3"></div></section>
+
+<section class="mb-4"><div class="eyebrow mb-2">SON 30 GÜN</div><div class="row g-3">
+  <div class="col-lg-6"><div class="panel chart-panel"><h2>Başarı %</h2><canvas id="accuracy-chart"></canvas></div></div>
+  <div class="col-lg-6"><div class="panel chart-panel"><h2>Günlük ROI</h2><canvas id="roi-chart"></canvas></div></div>
+  <div class="col-lg-6"><div class="panel chart-panel"><h2>Kümülatif kâr eğrisi</h2><canvas id="profit-chart"></canvas></div></div>
+  <div class="col-lg-6"><div class="panel chart-panel"><h2>Model bazlı başarı</h2><canvas id="model-chart"></canvas></div></div>
+</div></section>
+
+<section class="mb-4"><div class="eyebrow mb-2">SEÇİLEN GÜN · TÜM YARIŞ DURUMLARI</div>
+<div class="panel table-responsive"><table class="table table-darkish align-middle race-day-table">
+  <thead><tr><th>Track</th><th>Koşu</th><th>Başlangıç</th><th>At</th><th>Tahmin</th><th>Top-1</th><th>Ensemble P</th><th>Kazanan</th><th>Durum</th></tr></thead>
+  <tbody id="performance-race-day-body"><tr><td colspan="9" class="empty">Yükleniyor…</td></tr></tbody>
+</table></div></section>
+
+<section><div class="d-flex justify-content-between align-items-end mb-2"><div class="eyebrow">DETAY · 100 KAYIT/SAYFA</div><div id="history-count" class="text-secondary small"></div></div>
+<div class="panel table-responsive"><table class="table table-darkish align-middle performance-table">
+  <thead><tr><th>Tarih</th><th>Şehir</th><th>Koşu</th><th>Saat</th><th>Tahmin Edilen At</th><th>Gerçek Kazanan</th><th>Doğru</th><th>Oran</th><th>Getiri</th><th>Model</th><th>Prediction Time</th><th>Race Start</th></tr></thead>
+  <tbody id="history-body"><tr><td colspan="12" class="empty">Yükleniyor…</td></tr></tbody>
+</table></div><nav class="mt-3"><ul id="pagination" class="pagination pagination-sm justify-content-center"></ul></nav></section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+  const charts = {};
+  let page = 1;
+  const esc = value => String(value ?? '—').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const num = (value, digits=1) => Number(value || 0).toFixed(digits);
+  const signed = (value, suffix='') => `${Number(value || 0) >= 0 ? '+' : ''}${num(value)}${suffix}`;
+  const localDate=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
+  document.getElementById('filter-date').value=localDate();
+  const query = (includePage=false) => {
+    const data = new FormData(document.getElementById('performance-filters')); const q = new URLSearchParams();
+    for (const [key,value] of data) if (value) q.set(key,value); if (includePage) q.set('page',page); return q.toString();
+  };
+  const fetchJson = async url => { const response = await fetch(url); if (!response.ok) throw new Error(await response.text()); return response.json(); };
+  const renderSummary = data => {
+    if (!data.has_data) { document.getElementById('summary-cards').innerHTML='<div class="col-12"><div class="panel empty">Bu filtre için değerlendirilebilir veri yok.</div></div>'; return; }
+    const cards = [['Toplam Tahmin',data.total_predictions??data.evaluated_races],['Doğru Tahmin',data.correct_predictions??data.correct_races],['Başarı',`${num(data.accuracy_percent)}%`],['Toplam ROI',signed(data.roi_percent,'%')],['Net Kâr/Zarar',signed(data.net_profit,' birim')],['İşlenen Yarış',data.processed_races??data.evaluated_races]];
+    document.getElementById('summary-cards').innerHTML = cards.map(([label,value]) => `<div class="col-6 col-lg-2"><div class="metric performance-metric"><span>${label}</span><strong>${esc(value)}</strong></div></div>`).join('');
+  };
+  const renderModels = data => document.getElementById('model-cards').innerHTML = data.models.map(m => `<div class="col-sm-6 col-xl-3"><div class="panel model-card"><h3>${esc(m.model)}</h3>${m.predictions?`<div><span>Tahmin</span><b>${m.predictions}</b></div><div><span>Doğru</span><b>${m.correct}</b></div><div><span>Başarı</span><b>${num(m.accuracy_percent)}%</b></div><div><span>ROI</span><b class="${m.roi_percent >= 0 ? 'text-success':'text-danger'}">${signed(m.roi_percent,'%')}</b></div><div><span>Net Kâr</span><b>${signed(m.net_profit)}</b></div>`:'<div class="empty py-3">Veri yok</div>'}</div></div>`).join('');
+  const statusClass=s=>s==='Sonuç çekildi'?'ok':s==='TJK ID eksik'||s==='Eşleşme hatası'?'danger':s==='Kaynak desteklenmiyor'?'muted':'warn';
+  const renderTrackCoverage=data=>document.getElementById('performance-track-coverage').innerHTML=data.tracks.length?data.tracks.map(t=>`<div class="col-sm-6 col-xl-3"><div class="panel model-card"><h3>${esc(t.track)}</h3><div><span>Program</span><b>${t.program_races}</b></div><div><span>Tahmin</span><b>${t.prediction_races}</b></div><div><span>Sonuç</span><b>${t.result_races}</b></div><div><span>Değerlendirilen</span><b>${t.evaluated_races}</b></div><div><span>Eksik</span><b>${t.missing_result_races}</b></div><small class="text-secondary">${esc(t.missing_reason)}</small></div></div>`).join(''):'<div class="empty">Bu tarihte pist yok.</div>';
+  const renderRaceDay=data=>document.getElementById('performance-race-day-body').innerHTML=data.races.length?data.races.map(r=>`<tr><td>${esc(r.track)}</td><td>${esc(r.race_no)}</td><td class="mono">${esc(r.race_start_at)}</td><td>${r.horse_count}</td><td>${r.prediction_available?'Var':'Yok'}</td><td>${esc(r.top1_horse)}</td><td>${r.ensemble_probability==null?'—':Number(r.ensemble_probability).toFixed(4)}</td><td>${esc(r.actual_winner)}</td><td><span class="status-pill ${statusClass(r.result_status)}">${esc(r.result_status)}</span></td></tr>`).join(''):'<tr><td colspan="9" class="empty">Bu filtrede yarış yok.</td></tr>';
+  const chart = (id,type,labels,data,label,color) => { if (charts[id]) charts[id].destroy(); charts[id] = new Chart(document.getElementById(id),{type,data:{labels,datasets:[{label,data,borderColor:color,backgroundColor:color+'33',fill:type==='line',tension:.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8c9aaa'}}},scales:{x:{ticks:{color:'#8c9aaa'},grid:{color:'#263241'}},y:{ticks:{color:'#8c9aaa'},grid:{color:'#263241'}}}}}); };
+  const renderCharts = data => { const d=data.daily, labels=d.map(x=>x.race_date); chart('accuracy-chart','line',labels,d.map(x=>x.accuracy_percent),'Başarı %','#50e3a4'); chart('roi-chart','bar',labels,d.map(x=>x.roi_percent),'ROI %','#6ea8fe'); chart('profit-chart','line',labels,d.map(x=>x.cumulative_profit),'Birim','#ffb454'); chart('model-chart','bar',data.models.map(x=>x.model),data.models.map(x=>x.accuracy_percent),'Başarı %','#b78cff'); };
+  const renderHistory = data => { document.getElementById('history-count').textContent=`${data.total} kayıt · ${data.page}/${data.pages} sayfa`; document.getElementById('history-body').innerHTML = data.rows.length ? data.rows.map(r=>`<tr><td>${esc(r.race_date)}</td><td>${esc(r.city)}</td><td>${esc(r.race_no)}</td><td>${esc(r.race_time)}</td><td>${esc(r.predicted_horse)}</td><td>${esc(r.winner_name)}</td><td class="result-icon">${r.correct?'✅':'❌'}</td><td>${r.decimal_odds == null?'—':num(r.decimal_odds,2)}</td><td class="${r.net_return >= 0?'text-success':'text-danger'}">${r.net_return == null?'—':signed(r.net_return)}</td><td>${esc(r.model)}</td><td class="mono">${esc(r.prediction_time)}</td><td class="mono">${esc(r.race_start_at)}</td></tr>`).join('') : '<tr><td colspan="12" class="empty">Filtreyle eşleşen sonuç yok.</td></tr>'; renderPages(data); };
+  const renderPages = data => { const el=document.getElementById('pagination'); const start=Math.max(1,data.page-2),end=Math.min(data.pages,data.page+2); let html=`<li class="page-item ${data.page===1?'disabled':''}"><button class="page-link" data-page="${data.page-1}">‹</button></li>`; for(let i=start;i<=end;i++) html+=`<li class="page-item ${i===data.page?'active':''}"><button class="page-link" data-page="${i}">${i}</button></li>`; html+=`<li class="page-item ${data.page===data.pages?'disabled':''}"><button class="page-link" data-page="${data.page+1}">›</button></li>`; el.innerHTML=html; el.querySelectorAll('button[data-page]').forEach(b=>b.onclick=()=>{const next=Number(b.dataset.page);if(next>=1&&next<=data.pages){page=next;loadHistory();}}); };
+  const loadHistory = async () => renderHistory(await fetchJson(`/api/performance/history?${query(true)}`));
+  const loadTrackOptions=async()=>{const date=document.getElementById('filter-date').value,current=document.getElementById('filter-track').value,data=await fetchJson(`/api/race-day/tracks?date=${date}`),select=document.getElementById('filter-track');select.innerHTML='<option value="">Tümü</option>'+data.tracks.map(t=>`<option>${esc(t.track)}</option>`).join('');if([...select.options].some(o=>o.value===current))select.value=current;return data;};
+  const load = async () => { const badge=document.getElementById('performance-loading'); badge.textContent='YÜKLENİYOR';badge.className='status-pill warn'; try { const q=query(),date=document.getElementById('filter-date').value,track=document.getElementById('filter-track').value,raceQ=`date=${date}${track?'&track='+encodeURIComponent(track):''}`; const [summary,models,charts,history,trackCoverage,raceDay]=await Promise.all([fetchJson(`/api/performance/summary?${q}`),fetchJson(`/api/performance/models?${q}`),fetchJson(`/api/performance/chart?${q}`),fetchJson(`/api/performance/history?${query(true)}`),fetchJson(`/api/race-day/tracks?date=${date}`),fetchJson(`/api/race-day/races?${raceQ}`)]); renderSummary(summary);renderModels(models);renderCharts(charts);renderHistory(history);renderTrackCoverage(trackCoverage);renderRaceDay(raceDay);badge.textContent='GÜNCEL';badge.className='status-pill ok'; } catch(error){badge.textContent='HATA';badge.className='status-pill warn';console.error(error);} };
+  window.refreshPerformance=load; document.getElementById('performance-filters').onsubmit=e=>{e.preventDefault();page=1;load();}; document.getElementById('filter-date').onchange=()=>loadTrackOptions().then(load);document.getElementById('clear-filters').onclick=()=>{document.getElementById('performance-filters').reset();document.getElementById('filter-date').value=localDate();page=1;loadTrackOptions().then(load);}; loadTrackOptions().then(load);
+})();
+</script>
+<script src="/static/live-results.js"></script><script>new LiveResultsPoller({date:()=>document.getElementById('filter-date').value,refresh:()=>window.refreshPerformance()});</script>
+{% endblock %}

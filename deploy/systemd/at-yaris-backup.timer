@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AT Yaris Daily Backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-backup.service
+
+[Install]
+WantedBy=timers.target

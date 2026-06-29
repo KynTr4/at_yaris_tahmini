@@ -1,0 +1,32 @@
+[
+  {
+    "endpoint_key":"GET:Tjk\/GetRaceProgram",
+    "status_class":"timeout",
+    "http_status":null,
+    "latency_ms":10233,
+    "sample_params_json":"{\"p_sDate\":\"20.06.2026\"}",
+    "sample_body_json":"null",
+    "message":"Probe exceeded 10.0s",
+    "probed_at":"2026-06-20T18:17:00.440675+00:00",
+    "path":"Tjk\/GetRaceProgram",
+    "method":"GET",
+    "parameters_json":"[\"p_sDate\"]",
+    "response_schema_json":null,
+    "api_key_unlocked_fields_json":"[]"
+  },
+  {
+    "endpoint_key":"GET:Tjk\/getHorseListFromTjk",
+    "status_class":"timeout",
+    "http_status":null,
+    "latency_ms":6281,
+    "sample_params_json":"{}",
+    "sample_body_json":"null",
+    "message":"Probe exceeded 5.0s",
+    "probed_at":"2026-06-20T18:16:00.434445+00:00",
+    "path":"Tjk\/getHorseListFromTjk",
+    "method":"GET",
+    "parameters_json":"[]",
+    "response_schema_json":null,
+    "api_key_unlocked_fields_json":"[]"
+  }
+]

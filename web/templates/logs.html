@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block title %}Loglar{% endblock %}
+{% block content %}<div class="eyebrow">SON 200 SATIR</div><h1 class="mb-4">Servis logları</h1>
+<div class="row g-3"><div class="col-lg-3"><div class="panel file-list">{% for f in files %}<a href="/logs?name={{ f }}" class="{{ 'active' if f == selected else '' }}">{{ f }}</a>{% endfor %}</div></div>
+<div class="col-lg-9"><div class="panel"><h2>{{ selected or 'Log seçin' }}</h2>{% if content is not none %}<pre class="document log">{{ content }}</pre>{% else %}<div class="empty">Son satırlarını görmek için bir log seçin.</div>{% endif %}</div></div></div>{% endblock %}

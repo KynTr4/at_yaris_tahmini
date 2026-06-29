@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Race-Level Final Prediction Windows Every Five Minutes
+
+[Timer]
+OnCalendar=*-*-* 09..23:00/5:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-race-freeze.service
+
+[Install]
+WantedBy=timers.target

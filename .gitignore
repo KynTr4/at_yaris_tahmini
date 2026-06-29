@@ -1,0 +1,16 @@
+.env
+*.db
+*.sqlite
+*.sqlite3
+output/
+backups/
+*.parquet
+*.pkl
+*.joblib
+__pycache__/
+.venv/
+logs/
+dist/
+.cache/
+.config/
+.pytest_cache/

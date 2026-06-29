@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AT Yaris Daily Shadow Pipeline
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-daily.service
+
+[Install]
+WantedBy=timers.target

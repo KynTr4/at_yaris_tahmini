@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AT Yaris AGF Updates Frequently
+
+[Timer]
+OnCalendar=*-*-* 09..23:*:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-agf-update.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,178 @@
+﻿endpoint_key,method,path,parameters_json,safety_class
+GET:StableTeam/Get,GET,StableTeam/Get,"[""p_iStableTeamId"", ""p_iStableId""]",read
+GET:Registration/Get,GET,Registration/Get,[],read
+GET:Registration/GetAsNameId,GET,Registration/GetAsNameId,"[""p_iLanguage""]",read
+GET:Registration/GetAsNameIdForStallion,GET,Registration/GetAsNameIdForStallion,"[""p_iHorseId"", ""p_iLanguage""]",read
+GET:PageHeader/Get,GET,PageHeader/Get,"[""p_iHorse1Id"", ""p_iHorse2Id"", ""p_sPath"", ""p_iLanguage""]",read
+GET:PageHeader/GetDetail,GET,PageHeader/GetDetail,[],read
+GET:PageHeader/GetByLink,GET,PageHeader/GetByLink,"[""p_sPath"", ""p_iLanguage""]",read
+GET:PageHeader/GetByLinkArabian,GET,PageHeader/GetByLinkArabian,"[""p_sPath"", ""p_iLanguage""]",read
+GET:Bool/Get,GET,Bool/Get,[],read
+GET:Bool/GetAsNameId,GET,Bool/GetAsNameId,"[""p_iLanguage""]",read
+GET:ImageInfo/GetFatherById,GET,ImageInfo/GetFatherById,"[""p_iHorseId""]",read
+GET:ImageInfo/GetMotherById,GET,ImageInfo/GetMotherById,"[""p_iHorseId""]",read
+GET:ImageInfo/GetBmSireById,GET,ImageInfo/GetBmSireById,"[""p_iHorseId""]",read
+GET:HorseRaceParticipants/GetById,GET,HorseRaceParticipants/GetById,"[""p_iId""]",read
+GET:HorseRaceParticipants/GetByHorseRaceId,GET,HorseRaceParticipants/GetByHorseRaceId,"[""p_iHorseRaceId""]",read
+GET:StableMediaType/Get,GET,StableMediaType/Get,[],read
+GET:StableMediaType/GetAsNameId,GET,StableMediaType/GetAsNameId,"[""p_iLanguage""]",read
+GET:Node/Get,GET,Node/Get,"[""p_iId"", ""p_iCount""]",read
+GET:SortType/Get,GET,SortType/Get,[],read
+GET:FemaleFamily/GetFemaleFamilyReport,GET,FemaleFamily/GetFemaleFamilyReport,"[""p_iFirstId"", ""p_iSecondId"", ""p_iDamCount"", ""p_iGenerationCount""]",read
+GET:FemaleFamily/GetFemaleFamily,GET,FemaleFamily/GetFemaleFamily,"[""p_iFirstId"", ""p_iSecondId"", ""p_iDamCount"", ""p_iGenerationCount""]",read
+GET:SiteMap/GetSiteMap,GET,SiteMap/GetSiteMap,[],read
+GET:RaceGender/GetByTjkConditionHorseId,GET,RaceGender/GetByTjkConditionHorseId,"[""p_iTjkConditonHorseId""]",read
+GET:RaceGender/GetGeneralGenderAsNameId,GET,RaceGender/GetGeneralGenderAsNameId,"[""p_iLanguage""]",read
+GET:StallionGroup/Get,GET,StallionGroup/Get,"[""p_iId"", ""p_sCountryId""]",read
+GET:StallionGroup/GetByRaceId,GET,StallionGroup/GetByRaceId,"[""p_iId"", ""p_iRaceId"", ""p_sCountryId""]",read
+GET:StallionGroup/GetByHorseIdList,GET,StallionGroup/GetByHorseIdList,"[""p_sHorseIdList""]",read
+GET:StallionPage/GetRegisteredStallions,GET,StallionPage/GetRegisteredStallions,"[""p_iRaceId"", ""p_iTopCount""]",read
+GET:StallionPage/GetLastSeasonRegisteredStallions,GET,StallionPage/GetLastSeasonRegisteredStallions,"[""p_iRaceId""]",read
+GET:StallionPage/Get,GET,StallionPage/Get,"[""p_iStallionId""]",read
+GET:StallionPage/GetByLink,GET,StallionPage/GetByLink,"[""p_sLink""]",read
+GET:Banner/Get,GET,Banner/Get,"[""p_iId""]",read
+GET:Banner/GetBanner,GET,Banner/GetBanner,"[""p_iTopCount""]",read
+GET:Color/Get,GET,Color/Get,[],read
+GET:Ads/GetPageById,GET,Ads/GetPageById,"[""p_iAdsId""]",read
+GET:Ads/GetLastAds,GET,Ads/GetLastAds,"[""p_iTopCount""]",read
+GET:Ads/GetMyAds,GET,Ads/GetMyAds,"[""p_sAdsStatusId"", ""p_iPageNo"", ""p_iPageCount""]",read
+GET:Ads/GetMyFavoriteAds,GET,Ads/GetMyFavoriteAds,"[""p_iPageNo"", ""p_iPageCount""]",read
+GET:Ads/GetMyOfferedAds,GET,Ads/GetMyOfferedAds,"[""p_iPageNo"", ""p_iPageCount""]",read
+GET:Pedigree/GetPedigreeWithoutHeader,GET,Pedigree/GetPedigreeWithoutHeader,"[""p_iGenerationCount"", ""p_iFirstId"", ""p_iSecondId""]",read
+GET:Pedigree/GetPedigreeReport,GET,Pedigree/GetPedigreeReport,"[""p_iGenerationCount"", ""p_iFirstId"", ""p_iSecondId""]",read
+GET:Pedigree/GetFont,GET,Pedigree/GetFont,[],read
+GET:BmSire/GetFoalsOfBroodMareSire,GET,BmSire/GetFoalsOfBroodMareSire,"[""p_iHorseId""]",read
+GET:PersonType/Get,GET,PersonType/Get,[],read
+GET:PersonType/GetAsNameId,GET,PersonType/GetAsNameId,"[""p_iLanguage""]",read
+GET:AnalyzeType/Get,GET,AnalyzeType/Get,[],read
+GET:AnalyzeType/GetAsNameId,GET,AnalyzeType/GetAsNameId,"[""p_iLanguage""]",read
+GET:HorseInfo/GetSireLine,GET,HorseInfo/GetSireLine,"[""p_iRaceId"", ""p_iWinnerTypeId"", ""p_iFoalWinnerTypeId"", ""p_iFatherId""]",read
+GET:HorseInfo/GetSiblingsFromFatherByHorseId,GET,HorseInfo/GetSiblingsFromFatherByHorseId,"[""p_iHorseId""]",read
+GET:HorseInfo/GetSiblingsFromFatherByFatherId,GET,HorseInfo/GetSiblingsFromFatherByFatherId,"[""p_iFatherId""]",read
+GET:HorseInfo/GetSiblingsFromMotherByHorseId,GET,HorseInfo/GetSiblingsFromMotherByHorseId,"[""p_iHorseId""]",read
+GET:HorseInfo/GetSiblingsFromMotherByMotherId,GET,HorseInfo/GetSiblingsFromMotherByMotherId,"[""p_iMotherId""]",read
+GET:HorseInfo/GetSiblingsFromBroodmareSireByHorseId,GET,HorseInfo/GetSiblingsFromBroodmareSireByHorseId,"[""p_iHorseId""]",read
+GET:HorseInfo/GetSiblingsFromBroodmareSireByMotherId,GET,HorseInfo/GetSiblingsFromBroodmareSireByMotherId,"[""p_iMotherId""]",read
+GET:HorseInfo/GetTailFemaleByHorseId,GET,HorseInfo/GetTailFemaleByHorseId,"[""p_iHorseId""]",read
+GET:HorseInfo/GetTailFemaleByMotherId,GET,HorseInfo/GetTailFemaleByMotherId,"[""p_iMotherId""]",read
+GET:HorseInfo/GetFoalsOfBroodMareSireByHorseId,GET,HorseInfo/GetFoalsOfBroodMareSireByHorseId,"[""p_iHorseId""]",read
+GET:HorseInfo/GetNickHorses,GET,HorseInfo/GetNickHorses,"[""p_iHorseId1"", ""p_iHorseId2"", ""p_iOrderType""]",read
+GET:HorseInfo/GetCompareList,GET,HorseInfo/GetCompareList,"[""p_sIdList""]",read
+GET:HorseInfo/GetHorseFromFamily,GET,HorseInfo/GetHorseFromFamily,"[""p_iFamilyId"", ""p_sWinnerTypeId""]",read
+GET:HorseInfo/GetFamilyNick,GET,HorseInfo/GetFamilyNick,"[""p_iHorseId1"", ""p_iHorseId2""]",read
+GET:ProductType/Get,GET,ProductType/Get,[],read
+GET:ProductType/GetById,GET,ProductType/GetById,"[""p_iId""]",read
+GET:ProductType/GetAsNameId,GET,ProductType/GetAsNameId,"[""p_iLanguage""]",read
+GET:BitMap/GetSocialMediaImage,GET,BitMap/GetSocialMediaImage,"[""p_iAdsId"", ""p_iLanguageId"", ""p_iType""]",read
+GET:BitMap/GetSocialMediaImageForAllHorses,GET,BitMap/GetSocialMediaImageForAllHorses,"[""p_iHorseId"", ""p_iLanguageId"", ""p_iType""]",read
+GET:BitMap/GetReportForHorseForSale,GET,BitMap/GetReportForHorseForSale,"[""p_iAdsId"", ""p_iLanguageId""]",read
+GET:NickSuccess/Get,GET,NickSuccess/Get,"[""p_iHorseId""]",read
+GET:Stable/GetById,GET,Stable/GetById,"[""p_iId""]",read
+GET:BlogCategory/Get,GET,BlogCategory/Get,"[""p_iSelection""]",read
+GET:BlogCategory/GetWithCount,GET,BlogCategory/GetWithCount,"[""p_iSelection""]",read
+GET:BlogCategory/GetById,GET,BlogCategory/GetById,"[""p_iId""]",read
+GET:Family/Get,GET,Family/Get,"[""p_iRaceId""]",read
+GET:AdsStatus/Get,GET,AdsStatus/Get,[],read
+GET:AdsStatus/GetForUser,GET,AdsStatus/GetForUser,[],read
+GET:AdsStatus/GetById,GET,AdsStatus/GetById,"[""p_iId""]",read
+GET:AdsStatus/GetAsNameId,GET,AdsStatus/GetAsNameId,"[""p_iLanguage""]",read
+GET:AdsStatus/GetAsNameIdForUser,GET,AdsStatus/GetAsNameIdForUser,"[""p_iLanguage""]",read
+GET:Currency/Get,GET,Currency/Get,[],read
+GET:AdsSortType/Get,GET,AdsSortType/Get,[],read
+GET:AdsSortType/GetAsNameId,GET,AdsSortType/GetAsNameId,"[""p_iLanguage""]",read
+GET:Year/Get,GET,Year/Get,[],read
+GET:HorseRace/GetById,GET,HorseRace/GetById,"[""p_iId""]",read
+POST:HorseRace/GetFilter,POST,HorseRace/GetFilter,[],read_filter
+GET:HorseRace/GetByIdForPage,GET,HorseRace/GetByIdForPage,"[""p_iHorseRaceId"", ""p_iLanguageId""]",read
+GET:HorseRace/Analysis,GET,HorseRace/Analysis,"[""p_sIdList""]",read
+GET:AdsCategory/Get,GET,AdsCategory/Get,[],read
+GET:AdsCategory/GetAsNameId,GET,AdsCategory/GetAsNameId,"[""p_iLanguage""]",read
+GET:WinnerType/Get,GET,WinnerType/Get,[],read
+GET:WinnerType/GetAsNameId,GET,WinnerType/GetAsNameId,"[""p_iLanguage""]",read
+GET:WinnerType/GetForFamily,GET,WinnerType/GetForFamily,"[""p_iLanguage""]",read
+GET:Place/Get,GET,Place/Get,[],read
+GET:Place/GetAsNameId,GET,Place/GetAsNameId,[],read
+GET:SystemUser/RemindPassword,GET,SystemUser/RemindPassword,"[""p_sEmail""]",read
+GET:SystemUser/GetByEmail,GET,SystemUser/GetByEmail,"[""p_sEmail""]",read
+GET:SystemUser/GetByProfile,GET,SystemUser/GetByProfile,[],read
+GET:SystemUser/GetById,GET,SystemUser/GetById,"[""p_iId""]",read
+GET:SystemUser/GetOwnerBreederByName,GET,SystemUser/GetOwnerBreederByName,"[""p_sName""]",read
+GET:SystemUser/GetUserByName,GET,SystemUser/GetUserByName,"[""p_sName""]",read
+GET:SystemUser/GetEditor,GET,SystemUser/GetEditor,[],read
+GET:SystemUser/GetAsNameAndId,GET,SystemUser/GetAsNameAndId,[],read
+GET:SystemUser/CheckGuid,GET,SystemUser/CheckGuid,"[""p_sGuid""]",read
+GET:AdsProduct/Get,GET,AdsProduct/Get,"[""p_iAdsId"", ""p_iProductId""]",read
+GET:ParentPage/GetWebSite,GET,ParentPage/GetWebSite,[],read
+GET:ParentPage/GetById,GET,ParentPage/GetById,"[""p_iHorseId""]",read
+GET:ParentPage/GetRegisteredStallions,GET,ParentPage/GetRegisteredStallions,"[""p_iRaceId""]",read
+GET:ParentPage/Get,GET,ParentPage/Get,"[""p_iId"", ""p_sParentId"", ""p_iRaceId"", ""p_iPageNo"", ""p_iPageCount""]",read
+GET:ParentPage/GetByIdAsNameAndId,GET,ParentPage/GetByIdAsNameAndId,"[""p_iHorseId"", ""p_iLanguageId""]",read
+GET:Pregnant/Get,GET,Pregnant/Get,"[""p_iId"", ""p_iStallionAdsId"", ""p_iMareId""]",read
+GET:StableHorse/Get,GET,StableHorse/Get,"[""p_iStableHorseId"", ""p_iStableHorseCategoryId"", ""p_iStableId""]",read
+GET:RaceDistance/Get,GET,RaceDistance/Get,[],read
+GET:RaceTitle/Get,GET,RaceTitle/Get,[],read
+GET:RaceTitle/GetById,GET,RaceTitle/GetById,"[""p_iId""]",read
+GET:RaceTitle/GetAsNameId,GET,RaceTitle/GetAsNameId,"[""p_iLanguage""]",read
+GET:Linebreeding/GetLinebreedingReport,GET,Linebreeding/GetLinebreedingReport,"[""p_iFirstId"", ""p_iSecondId"", ""p_iGenerationCount"", ""p_iMinCross""]",read
+GET:Linebreeding/GetLinebreeding,GET,Linebreeding/GetLinebreeding,"[""p_iFirstId"", ""p_iSecondId"", ""p_iGenerationCount"", ""p_iMinCross""]",read
+GET:Sex/Get,GET,Sex/Get,[],read
+GET:RaceType/Get,GET,RaceType/Get,[],read
+GET:RaceType/GetAsNameId,GET,RaceType/GetAsNameId,"[""p_iLanguage""]",read
+GET:RaceType/GetInProgram,GET,RaceType/GetInProgram,[],read
+GET:Statistic/GetCount,GET,Statistic/GetCount,"[""p_iHorseId"", ""p_iAnalyzeTypeId"", ""p_sStartDate"", ""p_sEndDate""]",read
+GET:Statistic/GetCountByDay,GET,Statistic/GetCountByDay,"[""p_iHorseId"", ""p_iAnalyzeTypeId"", ""p_sStartDate"", ""p_sEndDate""]",read
+GET:Statistic/GetCountByAnalyzeType,GET,Statistic/GetCountByAnalyzeType,"[""p_iHorseId"", ""p_iAnalyzeTypeId"", ""p_sStartDate"", ""p_sEndDate""]",read
+GET:Statistic/GetAllDetails,GET,Statistic/GetAllDetails,"[""p_iHorseId"", ""p_iAnalyzeTypeId"", ""p_sStartDate"", ""p_sEndDate"", ""p_iPageNo"", ""p_iPageCount""]",read
+GET:Statistic/GetMyStallions,GET,Statistic/GetMyStallions,[],read
+GET:TailFemale/GetTailFemale,GET,TailFemale/GetTailFemale,"[""p_iHorseId""]",read
+GET:Country/GetAsNameId,GET,Country/GetAsNameId,"[""p_iLanguage""]",read
+GET:Country/GetAsNameIdForRaceCity,GET,Country/GetAsNameIdForRaceCity,"[""p_iLanguage""]",read
+GET:Country/GetStallionGroupCountry,GET,Country/GetStallionGroupCountry,[],read
+GET:Country/GetStallionGroupCountryByRaceId,GET,Country/GetStallionGroupCountryByRaceId,"[""p_iRaceId""]",read
+GET:RaceGroup/Get,GET,RaceGroup/Get,"[""p_sRaceId""]",read
+GET:RaceGroup/GetAsNameId,GET,RaceGroup/GetAsNameId,"[""p_iLanguage"", ""p_sRaceId""]",read
+GET:RaceGroup/GetByTjkConditionHorseId,GET,RaceGroup/GetByTjkConditionHorseId,"[""p_iTjkConditonHorseId""]",read
+GET:StallionAds/Get,GET,StallionAds/Get,"[""p_iId"", ""p_sSireId"", ""p_sYearId"", ""p_iRaceId"", ""p_iPageNo"", ""p_iPageCount""]",read
+GET:StableHistory/Get,GET,StableHistory/Get,"[""p_iId"", ""p_iStableId""]",read
+GET:StableHistory/GetForGallery,GET,StableHistory/GetForGallery,"[""p_iMediaTypeId"", ""p_iStableId""]",read
+GET:Race/Get,GET,Race/Get,[],read
+GET:Race/GetById,GET,Race/GetById,"[""p_iId""]",read
+GET:Race/GetAsNameId,GET,Race/GetAsNameId,"[""p_iLanguage""]",read
+GET:Race/GetAsNameIdForAds,GET,Race/GetAsNameIdForAds,"[""p_iLanguage""]",read
+GET:Favorite/GetMyFavorite,GET,Favorite/GetMyFavorite,"[""p_iRaceId"", ""p_iHypo"", ""p_iAlphabetical"", ""p_iPageNo"", ""p_iPageCount""]",read
+GET:Favorite/CheckFavorite,GET,Favorite/CheckFavorite,"[""p_iHorseId1"", ""piHorseId2""]",read
+GET:Favorite/GetFavoriteCount,GET,Favorite/GetFavoriteCount,"[""p_iHorseId1"", ""piHorseId2""]",read
+GET:StableHorseCategory/Get,GET,StableHorseCategory/Get,[],read
+GET:StableHorseCategory/GetWitHorses,GET,StableHorseCategory/GetWitHorses,"[""p_iStableId""]",read
+GET:StableHorseCategory/GetAsNameId,GET,StableHorseCategory/GetAsNameId,"[""p_iLanguage""]",read
+GET:SystemUserType/Get,GET,SystemUserType/Get,[],read
+GET:SystemUserType/GetById,GET,SystemUserType/GetById,"[""p_iId""]",read
+GET:SystemUserType/GetAsNameId,GET,SystemUserType/GetAsNameId,"[""p_iLanguage""]",read
+GET:RaceCity/Get,GET,RaceCity/Get,"[""p_sCountryId""]",read
+GET:RaceCity/GetRaceCity,GET,RaceCity/GetRaceCity,"[""p_sDate""]",read
+GET:RaceCity/GetAsNameId,GET,RaceCity/GetAsNameId,"[""p_iLanguage"", ""p_sCountryId""]",read
+GET:Product/Get,GET,Product/Get,"[""p_iProductTypeId""]",read
+GET:Product/GetAdsDoping,GET,Product/GetAdsDoping,[],read
+GET:Product/GetById,GET,Product/GetById,"[""p_iId""]",read
+GET:Product/GetByIdList,GET,Product/GetByIdList,"[""p_sIdList""]",read
+GET:Product/GetAsNameId,GET,Product/GetAsNameId,"[""p_iProductTypeId"", ""p_iLanguage""]",read
+GET:Horse/GetImageAndInfoById,GET,Horse/GetImageAndInfoById,"[""p_iId""]",read
+GET:Horse/GetHorseReportData,GET,Horse/GetHorseReportData,"[""p_iHorseId""]",read
+GET:Horse/GetCounter,GET,Horse/GetCounter,"[""p_iLanguage"", ""p_iRaceId""]",read
+GET:Horse/CheckHorseAvailable,GET,Horse/CheckHorseAvailable,"[""p_sName"", ""p_iFatherId"", ""p_iMotherId""]",read
+GET:Horse/GetByIdForUpdate,GET,Horse/GetByIdForUpdate,"[""p_iId""]",read
+GET:TjkConditonHorse/GetMyHorse,GET,TjkConditonHorse/GetMyHorse,[],read
+GET:TjkConditonHorse/GetTestHorses,GET,TjkConditonHorse/GetTestHorses,[],read
+GET:TjkConditonHorse/GetById,GET,TjkConditonHorse/GetById,"[""p_iId""]",read
+GET:RequestStatus/Get,GET,RequestStatus/Get,[],read
+GET:Report/GetById,GET,Report/GetById,"[""p_iId""]",read
+GET:Report/GetMyReport,GET,Report/GetMyReport,"[""p_iRaceId""]",read
+GET:Report/GetMyReportUsage,GET,Report/GetMyReportUsage,[],read
+GET:Blog/Get,GET,Blog/Get,"[""p_iBlogCategoryId"", ""p_iSelection""]",read
+GET:Blog/GetWithTopCount,GET,Blog/GetWithTopCount,"[""p_iBlogCategoryId"", ""p_iTopCount"", ""p_iSelection""]",read
+GET:Blog/GetById,GET,Blog/GetById,"[""p_iId""]",read
+GET:RaceFloor/Get,GET,RaceFloor/Get,[],read
+GET:RaceFloor/GetAsNameId,GET,RaceFloor/GetAsNameId,"[""p_iLanguage""]",read
+GET:FamilyNick/GetFamilyNick,GET,FamilyNick/GetFamilyNick,"[""p_iHorseId1"", ""p_iHorseId2""]",read
+GET:PregnantStatus/Get,GET,PregnantStatus/Get,[],read
+GET:PregnantStatus/GetAsNameId,GET,PregnantStatus/GetAsNameId,"[""p_iLanguage""]",read

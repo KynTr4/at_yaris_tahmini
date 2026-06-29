@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AT Yaris Result Updates Frequently
+
+[Timer]
+OnCalendar=*-*-* 12..23:00/15:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-results-update.service
+
+[Install]
+WantedBy=timers.target

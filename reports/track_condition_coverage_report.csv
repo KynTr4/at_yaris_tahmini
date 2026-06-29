@@ -1,0 +1,2 @@
+report_name,total_races,matched_rows,unmatched_rows,match_rate,years_with_data,tracks_with_data,missing_fields,confidence_score
+track_condition,360797,0,360797,0.0%,,,"track_condition, weather, temperature, humidity",0.0

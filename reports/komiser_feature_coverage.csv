@@ -1,0 +1,11 @@
+feature_name,non_zero_count,total_rows,coverage_percent
+had_jockey_change,0,360797,0.0
+had_trainer_change,1,360797,0.00027716416710781965
+had_equipment_change,0,360797,0.0
+had_veterinary_issue,0,360797,0.0
+had_lameness_issue,0,360797,0.0
+had_steward_incident,0,360797,0.0
+had_recent_scratch,0,360797,0.0
+incident_count_last_30d,0,360797,0.0
+veterinary_count_last_180d,0,360797,0.0
+steward_incident_count_last_180d,0,360797,0.0

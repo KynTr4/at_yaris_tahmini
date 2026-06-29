@@ -1,0 +1,3 @@
+﻿endpoint_key,status_class,http_status,latency_ms,sample_params_json,sample_body_json,message,probed_at,path,method,parameters_json,response_schema_json,api_key_unlocked_fields_json
+GET:Tjk/GetRaceProgram,timeout,,10233,"{""p_sDate"":""20.06.2026""}",null,Probe exceeded 10.0s,2026-06-20T18:17:00.440675+00:00,Tjk/GetRaceProgram,GET,"[""p_sDate""]",,[]
+GET:Tjk/getHorseListFromTjk,timeout,,6281,{},null,Probe exceeded 5.0s,2026-06-20T18:16:00.434445+00:00,Tjk/getHorseListFromTjk,GET,[],,[]

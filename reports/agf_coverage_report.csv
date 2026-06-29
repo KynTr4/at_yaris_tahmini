@@ -1,0 +1,2 @@
+report_name,total_races,matched_rows,unmatched_rows,match_rate,years_with_data,tracks_with_data,missing_fields,confidence_score
+agf,360797,0,360797,0.0%,,,"agf_percent, agf_rank",0.0

@@ -1,0 +1,14 @@
+[Unit]
+Description=AT Yaris AGF Snapshot Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=at_yaris
+WorkingDirectory=/opt/at_yaris_tahmini
+EnvironmentFile=/opt/at_yaris_tahmini/.env
+ExecStart=/opt/at_yaris_tahmini/.venv/bin/python run_agf_update.py
+StandardOutput=append:/var/log/at_yaris_tahmini/agf.log
+StandardError=append:/var/log/at_yaris_tahmini/agf.err.log
+TimeoutStartSec=900

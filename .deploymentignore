@@ -1,0 +1,12 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.log
+*.tmp
+backups/
+scratch/
+catboost_info/
+dist/
+pedigreeall_progress.db-wal
+pedigreeall_progress.db-shm

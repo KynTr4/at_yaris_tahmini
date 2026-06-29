@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% block title %}Sistem Durumu{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end mb-4">
+  <div><div class="eyebrow">CANLI GÖZLEM</div><h1>Shadow sistem durumu</h1></div>
+  <span class="status-pill {{ 'ok' if data.system_status == 'healthy' else 'warn' }}">{{ data.system_status|upper }}</span>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3"><div class="metric"><span>Production ready</span><strong>{{ 'EVET' if data.production_ready else 'HAYIR' }}</strong></div></div>
+  <div class="col-6 col-xl-3"><div class="metric"><span>Shadow gün</span><strong>{{ data.shadow_days }}</strong></div></div>
+  <div class="col-6 col-xl-3"><div class="metric"><span>Disk kullanımı</span><strong>%{{ data.disk_used_percent }}</strong><small>{{ data.disk_free_gb }} GB boş</small></div></div>
+  <div class="col-6 col-xl-3"><div class="metric"><span>Aktif hata</span><strong>{{ data.active_errors|length }}</strong></div></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-5"><div class="panel h-100"><h2>Güvenlik kapıları</h2>
+    {% for label, value in [('Leakage gate',data.leakage_gate),('Feature contract',data.feature_contract),('Snapshot coverage',data.snapshot_coverage)] %}
+    <div class="check-row"><span>{{ label }}</span><b class="{{ 'text-success' if value else 'text-danger' }}">{{ 'PASS' if value else 'FAIL' }}</b></div>{% endfor %}
+  </div></div>
+  <div class="col-lg-7"><div class="panel h-100"><h2>Son işlemler</h2>
+    <div class="table-responsive"><table class="table table-darkish mb-0"><tbody>
+      <tr><td>Daily pipeline</td><td>{{ data.last_pipeline_status or '—' }}</td><td>{{ data.last_pipeline_at or '—' }}</td></tr>
+      <tr><td>AGF update</td><td>{{ data.last_agf_status or '—' }}</td><td>{{ data.last_agf_at or '—' }}</td></tr>
+      <tr><td>Results update</td><td>{{ data.last_results_status or '—' }}</td><td>{{ data.last_results_at or '—' }}</td></tr>
+      <tr><td>Son tahmin</td><td colspan="2">{{ data.last_prediction_at or '—' }}</td></tr>
+      <tr><td>Son backup</td><td colspan="2">{{ data.last_backup_at or '—' }}</td></tr>
+    </tbody></table></div>
+  </div></div>
+</div>
+{% endblock %}
