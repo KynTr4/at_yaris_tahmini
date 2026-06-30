@@ -52,6 +52,9 @@ EOF
 }
 
 run_deploy() {
+    # Ensure we run all commands from the project root directory
+    cd "${PROJECT_ROOT}"
+
     # 1. Take a deploy backup of critical files before fetching/resetting
     echo "Taking deploy configuration backup..."
     DEPLOY_BACKUPS_DIR="/var/backups/at_yaris_tahmini/deploy_backups"
@@ -73,7 +76,7 @@ EOF
 
     # Create archive of critical configs only
     tar -czf "$BACKUP_PATH" \
-        -C "${PROJECT_ROOT}" .env deploy/systemd requirements.txt migrations \
+        .env deploy/systemd requirements.txt migrations \
         -C "${TEMP_META_DIR}" deploy_metadata.json 2>/dev/null || true
 
     rm -rf "$TEMP_META_DIR"
@@ -126,6 +129,9 @@ EOF
     fi
     local port="${web_port:-8000}"
     local host="${web_host:-127.0.0.1}"
+    if [ "$host" = "0.0.0.0" ]; then
+        host="127.0.0.1"
+    fi
 
     # Test /health endpoint
     local health_url="http://${host}:${port}/health"
