@@ -1,6 +1,6 @@
 # Production Model Training Report v2
 
-Generated: 2026-06-30T09:50:08.530425+00:00
+Generated: 2026-06-30T11:12:33.047019+00:00
 
 - Historical current-race `GET:Tjk/Get.HP` is forbidden.
 - `pre_race_handicap_rating` is one-race-lagged in historical training and direct pre-race program HANDICAP in live scoring.

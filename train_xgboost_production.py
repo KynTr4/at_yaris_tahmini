@@ -23,7 +23,7 @@ DEPRECATED_MARKER = "models/benter_baseline_xgb.deprecated.md"
 
 FEATURE_COLS = [
     "track", "distance", "surface", "race_class", "carried_weight", "draw",
-    "handicap_rating", "days_since_last_race", "last_3_avg_position",
+    "pre_race_handicap_rating", "days_since_last_race", "last_3_avg_position",
     "last_5_avg_position", "last_10_avg_position", "surface_win_rate",
     "distance_win_rate", "track_win_rate", "jockey_horse_win_rate",
     "trainer_horse_win_rate", "weight_change", "class_change",
@@ -116,7 +116,7 @@ def legacy_main():
         report.write("The old XGBoost model is marked deprecated because it cannot accept the live 20-column prediction dataframe directly. A new production XGBoost pipeline is trained below with its own preprocessor and saved as `models/xgboost_production.pkl`.\n")
 
     usable = df.copy()
-    usable["race_date_parsed"] = pd.to_datetime(usable["race_date"], errors="coerce")
+    usable["race_date_parsed"] = pd.to_datetime(usable["race_date"], dayfirst=True, errors="coerce")
     usable["finish_position_numeric"] = pd.to_numeric(usable["finish_position"], errors="coerce")
     usable = usable[usable["race_date_parsed"].notna() & usable["finish_position_numeric"].notna()].copy()
     usable = usable[usable["race_id"].notna()].copy()

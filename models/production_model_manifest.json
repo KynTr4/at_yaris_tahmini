@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-30T09:50:08.530425+00:00",
+  "generated_at": "2026-06-30T11:12:33.047019+00:00",
   "feature_contract_version": "asof-model-features-v2-prerace-rating",
   "features": [
     "track",
@@ -84,7 +84,7 @@
     },
     "catboost": {
       "path": "models\\benter_baseline_catboost.pkl",
-      "sha256": "87d8b3e7a28c9f1b40b2493479184a770d8a25d86c4dbe7a38893473d792cbe7"
+      "sha256": "e887d6b5df5853345bdbe76b798ecf47dcbec6ae002b7bbdd9578651e340dbca"
     },
     "xgboost": {
       "path": "models\\xgboost_production.pkl",

@@ -1,6 +1,6 @@
 # ROI Simulation Report — NOT CERTIFIED
 
-Generated: 2026-06-30 12:43:07
+Generated: 2026-06-30 14:12:39
 
 Historical odds have no immutable pre-race timestamp. ROI is diagnostic only and must not be used as a live-return claim.
 

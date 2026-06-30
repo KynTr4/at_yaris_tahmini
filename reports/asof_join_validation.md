@@ -1,6 +1,6 @@
 # As-Of Join Validation
 
-Generated: 2026-06-30 12:50:49
+Generated: 2026-06-30 14:00:35
 
 Certified feature rows/races: **84 / 8**.
 

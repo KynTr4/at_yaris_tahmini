@@ -1,6 +1,6 @@
 # Calibration Report
 
-Generated: 2026-06-30 12:43:07
+Generated: 2026-06-30 14:12:39
 
 Probabilities are normalized independently inside every race before calibration measurement. ECE uses 10 fixed-width bins.
 

@@ -1,6 +1,6 @@
 # Feature Importance
 
-Generated: 2026-06-30 12:43:07
+Generated: 2026-06-30 14:12:39
 
 Importance is computed on the 2026 holdout model trained only on internally complete race fields before 2026. Historical current-race HP is forbidden; the contract uses one-race-lagged pre_race_handicap_rating.
 
