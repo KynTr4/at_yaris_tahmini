@@ -1,0 +1,11 @@
+[Unit]
+Description=AT Yaris Nightly System Cleanup
+
+[Service]
+Type=oneshot
+User=at_yaris
+WorkingDirectory=/opt/at_yaris_tahmini
+ExecStart=/opt/at_yaris_tahmini/cleanup.sh
+StandardOutput=append:/var/log/at_yaris_tahmini/cleanup.log
+StandardError=append:/var/log/at_yaris_tahmini/cleanup.err.log
+TimeoutStartSec=1800

@@ -109,8 +109,8 @@ def load_history(db_path: str | Path = DB) -> tuple[pd.DataFrame, pd.DataFrame]:
         connection.close()
     if history.empty:
         return history, odds
-    history["prediction_time_parsed"] = pd.to_datetime(history["prediction_time"], utc=True)
-    history["race_start_parsed"] = pd.to_datetime(history["race_start_at"], utc=True)
+    history["prediction_time_parsed"] = pd.to_datetime(history["prediction_time"], utc=True, format="ISO8601")
+    history["race_start_parsed"] = pd.to_datetime(history["race_start_at"], utc=True, format="ISO8601")
     history["race_date"] = history["race_start_parsed"].dt.tz_convert(
         ZoneInfo("Europe/Istanbul")
     ).dt.date.astype(str)

@@ -187,3 +187,57 @@ sudo -u at_yaris /opt/at_yaris_tahmini/.venv/bin/python healthcheck.py
 Kurulum günlük program pipeline'ını, dakikalık AGF kontrolünü, beş dakikalık global sonuç kontrolünü, race-level final prediction freeze scheduler'ını ve yedekleme timer'larını etkinleştirir. Programda bulunan yabancı/Karma pistler görünür kalır; kaynağı desteklenmeyenler `SOURCE_UNSUPPORTED` durumuyla ağır sonuç sorgusundan çıkarılır. Ortam ayarları `.env`, servis tanımları `deploy/systemd/`, log rotasyonu `deploy/logrotate/` altındadır.
 
 Read-only FastAPI dashboard `at-yaris-web.service` ile çalışır. HTML sayfaları ve `/api/*` uçları Basic Auth gerektirir; SQLite bağlantısı `mode=ro` ve `query_only` kullanır. Opsiyonel Nginx reverse proxy yapılandırması `deploy/nginx/at-yaris-dashboard.conf` dosyasındadır.
+
+## Production Deploy ve Backup Sistemi
+
+Mevcut sistem, tamamen Git tabanlı ve sıfır-kesinti odaklı bir deploy ve yedekleme (backup) altyapısına sahiptir.
+
+### Geliştirme ve Deploy Akışı
+
+1. **Geliştirme (Local):**
+   Kod değişiklikleri yapıldıktan sonra yerel ortamda test edilir ve GitHub reposuna gönderilir:
+   ```bash
+   git commit -m "feat: yeni özellik"
+   git push origin main
+   ```
+
+2. **Dağıtım (VPS - deploy.sh):**
+   VPS üzerinde `/opt/at_yaris_tahmini/deploy.sh` scripti çalıştırılarak deploy akışı başlatılır:
+   ```bash
+   sudo ./deploy.sh
+   ```
+   - **Deploy Yedekleme:** Canlı kod ve konfigürasyon güncellenmeden önce `.env`, systemd servisleri ve `requirements.txt` gibi kritik dosyaların bir yedeği `/var/backups/at_yaris_tahmini/deploy_backups/` altına alınır. En fazla son 3 deploy yedeği saklanır.
+   - **Git Reset:** Sunucu `git fetch origin` ve `git reset --hard origin/main` komutlarıyla GitHub'daki en güncel sürümle senkronize edilir. Canlı SQLite veritabanı ezilmez.
+   - **Migration:** Yeni bir veritabanı şema güncellemesi varsa otomatik olarak `migrate_provenance_schema.py` aracılığıyla uygulanır.
+   - **Servis Yeniden Başlatma:** Systemd daemon-reload yapılarak `at-yaris-web.service`, `at-yaris-results-update.timer` ve `at-yaris-race-freeze.timer` servisleri yeniden başlatılır.
+   - **Sağlık Kontrolü (Health Check):** `/health` endpoint'i üzerinden web sunucusunun durumu, SQLite `query_only` readonly bağlantı güvencesi ve systemd zamanlayıcılarının çalışması doğrulanır.
+   - **Raporlama:** Deploy sonucu `reports/deploy_report_YYYYMMDD_HHMMSS.md` dosyasına rapor olarak yazılır.
+
+### Geri Alma (Rollback) Akışı
+
+Bir hata durumunda son 3 başarılı deploy yedeklerinden birine geri dönmek için:
+1. İlgili deploy yedeği `/var/backups/at_yaris_tahmini/deploy_backups/` altından çıkarılır.
+2. Kod tabanı önceki kararlı git commit hash'ine resetlenir:
+   ```bash
+   git reset --hard <onceki_commit_hash>
+   ```
+3. Servisler yeniden başlatılır.
+
+### Veritabanı Yedekleme (Backup) Politikası
+
+Canlı veritabanı `pedigreeall_progress.db` dosyasının yedeklenmesi `backup_db.py` scripti ile SQLite online hot-backup yöntemiyle gerçekleştirilir:
+- **Konum:** `/var/backups/at_yaris_tahmini/`
+- **Retention (Yedek Saklama Süreleri):**
+  - `daily` (Günlük): Son 7 günün yedeği.
+  - `weekly` (Haftalık): Son 4 haftanın yedeği.
+  - `monthly` (Aylık): Son 6 ayın yedeği.
+- Eski yedekler otomatik olarak silinir (Pruning).
+
+### Gece Temizliği ve Log Yönetimi (cleanup.sh)
+
+Her gece 04:00'te çalışan `cleanup.sh` otomasyonu:
+- 7 günden eski deploy yedeklerini siler.
+- 30 günden eski AGF HTML indirme önbelleğini (`data/agfv2_raw/html/`) temizler.
+- 30 günden eski geçici raporları siler.
+- Pip, python `__pycache__` ve pytest cache dosyalarını temizleyerek disk kullanımını optimize eder.
+- Loglar `logrotate` ile günlük olarak sıkıştırılıp (compress) 14 gün saklanır ve journalctl logları 7 gün ile sınırlandırılır.

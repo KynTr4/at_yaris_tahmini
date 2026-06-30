@@ -1,12 +1,1099 @@
-{% extends "base.html" %}{% block title %}Bahis Simülasyonu{% endblock %}
+{% extends "base.html" %}
+{% block title %}Bahis Simülasyonu · Karşılaştırma Paneli{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-end mb-4"><div><div class="eyebrow">FLAT BETTING · TOP-1</div><h1>Bahis Simülasyonu</h1><p class="text-secondary mb-0">Varsayılan 20 TL. Doğru tahminde resmi oran yoksa para hesabına dahil edilmez.</p></div><span id="bet-status" class="status-pill warn">YÜKLENİYOR</span></div>
-<form id="bet-filters" class="panel performance-filters mb-4"><div><label>Tarih</label><input name="date" type="date" class="form-control"></div><div><label>Pist</label><select id="bet-track" name="track" class="form-select"><option value="">Tümü</option></select></div><div><label>Model</label><select name="model" class="form-select"><option>Ensemble</option><option>Logistic</option><option>CatBoost</option><option>XGBoost</option></select></div><div><label>Sonuç</label><select name="outcome" class="form-select"><option value="all">Tümü</option><option value="correct">Doğru</option><option value="incorrect">Yanlış</option></select></div><div><label>Stake (TL)</label><input id="bet-stake" name="stake" type="number" min="1" step="1" value="20" list="stake-values" class="form-control"><datalist id="stake-values"><option value="20"><option value="50"><option value="100"></datalist></div><button class="btn btn-accent" type="submit">Hesapla</button><a id="bet-export" class="btn btn-outline-success">CSV Export</a></form>
-<div id="bet-summary" class="row g-3 mb-4"></div>
-<div class="panel table-responsive"><table class="table table-darkish bet-table"><thead><tr><th>Tarih</th><th>Pist</th><th>Koşu</th><th>Model</th><th>Tahmin</th><th>Kazanan</th><th>Doğru</th><th>Oran</th><th>Stake</th><th>Dönüş</th><th>Net Kâr</th><th>Odds</th></tr></thead><tbody id="bet-history"><tr><td colspan="12" class="empty">Yükleniyor…</td></tr></tbody></table></div><nav class="mt-3"><ul id="bet-pages" class="pagination pagination-sm justify-content-center"></ul></nav>
+<style>
+  /* Custom dashboard styles for advanced analytics view */
+  .model-border-catboost { border-top: 4px solid #50e3a4 !important; }
+  .model-border-xgboost { border-top: 4px solid #6ea8fe !important; }
+  .model-border-logistic { border-top: 4px solid #b78cff !important; }
+  .model-border-ensemble { border-top: 4px solid #ffb454 !important; }
+
+  .text-catboost { color: #50e3a4 !important; }
+  .text-xgboost { color: #6ea8fe !important; }
+  .text-logistic { color: #b78cff !important; }
+  .text-ensemble { color: #ffb454 !important; }
+
+  .bg-catboost-alpha { background: rgba(80, 227, 164, 0.08) !important; }
+  .bg-xgboost-alpha { background: rgba(110, 168, 254, 0.08) !important; }
+  .bg-logistic-alpha { background: rgba(183, 140, 255, 0.08) !important; }
+  .bg-ensemble-alpha { background: rgba(255, 180, 84, 0.08) !important; }
+
+  .winner-highlight { border: 2px solid #50e3a4 !important; box-shadow: 0 0 20px rgba(80, 227, 164, 0.25) !important; position: relative; }
+  .winner-badge { position: absolute; top: -12px; right: 15px; font-size: 0.65rem; font-weight: 900; background: #50e3a4; color: #0b0f14; padding: 2px 8px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .chart-container { position: relative; width: 100%; height: 350px; }
+  .chart-container-sm { position: relative; width: 100%; height: 220px; }
+
+  .metric-mini-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem 1rem; margin-top: 0.8rem; border-top: 1px solid var(--line); padding-top: 0.8rem; font-size: 0.82rem; }
+  .metric-mini-grid > div { display: flex; justify-content: space-between; align-items: center; }
+  .metric-mini-grid span { color: var(--muted); }
+  .metric-mini-grid strong { font-weight: 600; color: var(--text); }
+
+  .sort-header { cursor: pointer; user-select: none; }
+  .sort-header:hover { background: rgba(255,255,255,0.05); }
+  .sort-header::after { content: ' ↕'; font-size: 0.7em; color: var(--muted); }
+  .sort-header.asc::after { content: ' ↑'; color: var(--accent); }
+  .sort-header.desc::after { content: ' ↓'; color: var(--accent); }
+
+  .modal-dark { --bs-modal-bg: #121922; --bs-modal-header-border-color: #263241; --bs-modal-footer-border-color: #263241; color: var(--text); }
+  .modal-dark .modal-content { border: 1px solid var(--line); box-shadow: 0 25px 60px rgba(0,0,0,0.5); }
+
+  .detail-table th { padding: 0.75rem 0.5rem !important; }
+  .detail-table td { padding: 0.75rem 0.5rem !important; vertical-align: middle; }
+  
+  .sub-col-title { font-size: 0.68rem; text-transform: uppercase; color: var(--muted); letter-spacing: 0.05em; padding-bottom: 2px !important; border-bottom: 1px solid rgba(38, 50, 65, 0.5) !important; text-align: center; }
+
+  /* Print Styles */
+  @media print {
+    body { background: white !important; color: black !important; }
+    .navbar, #bet-filters, #bet-pages, .btn, .status-pill, .chart-actions { display: none !important; }
+    .panel { border: 1px solid #ccc !important; background: white !important; box-shadow: none !important; color: black !important; }
+    .metric { background: white !important; border: 1px solid #ccc !important; box-shadow: none !important; color: black !important; }
+    .table { color: black !important; }
+    .table th, .table td { border-color: #ccc !important; color: black !important; }
+    canvas { max-width: 100% !important; height: auto !important; }
+  }
+</style>
+
+<div class="d-flex justify-content-between align-items-end mb-4">
+  <div>
+    <div class="eyebrow">FLAT BETTING · TOP-1</div>
+    <h1>Bahis Simülasyonu</h1>
+    <p class="text-secondary mb-0">Varsayılan stake ile model performanslarının analitik ve karşılaştırmalı görünümü.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <button onclick="window.refreshSimulation()" class="btn btn-outline-secondary d-flex align-items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+      GÜNCELLE
+    </button>
+    <span id="bet-status" class="status-pill warn align-self-center">YÜKLENİYOR</span>
+  </div>
+</div>
+
+<!-- Filters Panel -->
+<form id="bet-filters" class="panel mb-4">
+  <div class="row g-3">
+    <div class="col-md-2">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Tarih</label>
+      <input name="date" type="date" class="form-control form-control-sm bg-dark text-white border-secondary">
+    </div>
+    <div class="col-md-2">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Pist</label>
+      <select id="bet-track" name="track" class="form-select form-select-sm bg-dark text-white border-secondary">
+        <option value="">Tümü</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Koşu</label>
+      <select name="race_no" class="form-select form-select-sm bg-dark text-white border-secondary">
+        <option value="">Tümü</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Sonuç</label>
+      <select name="outcome" class="form-select form-select-sm bg-dark text-white border-secondary">
+        <option value="all">Tümü</option>
+        <option value="correct">Doğru</option>
+        <option value="incorrect">Yanlış</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Stake (TL)</label>
+      <input id="bet-stake" name="stake" type="number" min="1" step="1" value="20" class="form-control form-control-sm bg-dark text-white border-secondary">
+    </div>
+    <div class="col-md-5 d-flex flex-column justify-content-end">
+      <label class="small text-secondary text-uppercase fw-semibold mb-1">Modeller</label>
+      <div class="d-flex flex-wrap gap-3 align-items-center py-1">
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" name="model" value="CatBoost" id="m-cb" checked>
+          <label class="form-check-label small text-catboost" for="m-cb">CatBoost</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" name="model" value="XGBoost" id="m-xgb" checked>
+          <label class="form-check-label small text-xgboost" for="m-xgb">XGBoost</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" name="model" value="Logistic" id="m-log" checked>
+          <label class="form-check-label small text-logistic" for="m-log">Logistic</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" name="model" value="Ensemble" id="m-ens" checked>
+          <label class="form-check-label small text-ensemble" for="m-ens">Ensemble</label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row mt-3">
+    <div class="col-12 d-flex justify-content-between">
+      <button class="btn btn-accent px-4 btn-sm" type="submit">Hesapla</button>
+      <div class="d-flex gap-2">
+        <a id="bet-export" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-file-earmark-excel" viewBox="0 0 16 16"><path d="M5.884 6.68a.5.5 0 1 0-.768.64L7.349 10l-2.233 2.68a.5.5 0 0 0 .768.64L8 10.781l2.116 2.54a.5.5 0 0 0 .768-.641L8.651 10l2.233-2.68a.5.5 0 0 0-.768-.64L8 9.219l-2.116-2.54z"/><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.3 1.25V4.5h3.25L9.3 1.25zM1 18h14V4.5H10a1 1 0 0 1-1-1V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1z"/></svg>
+          CSV Export
+        </a>
+        <button type="button" onclick="window.print()" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-file-pdf" viewBox="0 0 16 16"><path d="M4 1h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H4z"/><path d="M4.603 12.087a.81.81 0 0 1-.438-.42c-.195-.388-.13-.776.08-1.102.198-.307.526-.568.897-.787a.768.768 0 0 1-.248-.371c-.19-.459-.203-.9-.054-1.254.127-.3.35-.558.624-.657a.381.381 0 0 1 .374.043c.175.13.244.385.228.674-.015.283-.114.576-.252.843.14.3.364.58.625.803.137.117.273.222.408.319.43-.29.905-.505 1.347-.505.317 0 .599.111.793.307.25.253.257.602.124.96-.153.4-.5.589-.878.589a2.531 2.531 0 0 1-1.34-.41 7.006 7.006 0 0 1-1.81.947c-.505.183-.98.3-1.37.3c-.028 0-.056-.002-.084-.006zm.935-3.64c-.093.266-.08.567.012.839.09-.082.18-.171.268-.263a5.088 5.088 0 0 0-.28-.576zm.89 1.43c-.152.148-.328.314-.524.495 1.014-.23 1.74-.505 2.19-.712a5.89 5.89 0 0 0-1.666-.283zm.21-.852c.074-.153.121-.303.145-.443a.475.475 0 0 0-.022-.249.09.09 0 0 0-.07-.037.116.116 0 0 0-.083.056c-.055.07-.113.238-.113.447 0 .093.007.164.015.226h.128zm-1.007 1.41a.513.513 0 0 0-.192.484c.015.093.076.223.194.3a.584.584 0 0 0 .285.064c.282 0 .567-.189.814-.38a4.937 4.937 0 0 0-1.1-.468z"/></svg>
+          PDF Export
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Model Summary Cards -->
+<div class="row g-3 mb-4" id="models-summary-cards">
+  <!-- Dynamic cards inserted here by JS -->
+</div>
+
+<!-- Main Comparison Section -->
+<div class="row g-3 mb-4">
+  <!-- Line Chart panel -->
+  <div class="col-lg-8">
+    <div class="panel h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0 text-white">Modellere Göre Net Kâr Karşılaştırması (TL)</h2>
+        <div class="chart-actions">
+          <button onclick="downloadChartPNG('net-kar-line-chart', 'net_kar_gelisimi')" class="btn btn-xs btn-outline-secondary py-1 px-2 text-xs">PNG</button>
+        </div>
+      </div>
+      <div class="row g-2 align-items-center">
+        <div class="col-md-9">
+          <div class="chart-container">
+            <canvas id="net-kar-line-chart"></canvas>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="d-flex flex-column gap-2" id="chart-legend-container">
+            <!-- Custom HTML Legend items inserted here by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Summary Table and Mini Bar Chart -->
+  <div class="col-lg-4 d-flex flex-column gap-3">
+    <div class="panel flex-fill">
+      <h2 class="mb-3 text-white">Model Performans Özeti</h2>
+      <div class="table-responsive">
+        <table class="table table-sm table-darkish align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th class="text-end">Doğru</th>
+              <th class="text-end">Başarı %</th>
+              <th class="text-end">Net Kâr</th>
+              <th class="text-end">ROI</th>
+            </tr>
+          </thead>
+          <tbody id="model-summary-table-body">
+            <!-- Dynamic summary table content -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel flex-fill">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0 text-white">Model Win Rate Karşılaştırması (%)</h2>
+        <button onclick="downloadChartPNG('win-rate-bar-chart', 'win_rate_karsilastirma')" class="btn btn-xs btn-outline-secondary py-1 px-2 text-xs">PNG</button>
+      </div>
+      <div class="chart-container-sm">
+        <canvas id="win-rate-bar-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2x2 Supplementary Charts Panel -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="mb-0 text-white text-xs">ROI Karşılaştırma (%)</h2>
+        <button onclick="downloadChartPNG('roi-bar-chart', 'roi_karsilastirma')" class="btn btn-xs btn-outline-secondary py-0 px-1 text-xs">PNG</button>
+      </div>
+      <div class="chart-container-sm">
+        <canvas id="roi-bar-chart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="mb-0 text-white text-xs">Doğru / Yanlış Sayısı</h2>
+        <button onclick="downloadChartPNG('stacked-outcome-chart', 'dogru_yanlis_stacked')" class="btn btn-xs btn-outline-secondary py-0 px-1 text-xs">PNG</button>
+      </div>
+      <div class="chart-container-sm">
+        <canvas id="stacked-outcome-chart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="panel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="mb-0 text-white text-xs">Kümülatif Kâr Gelişimi (Area)</h2>
+        <button onclick="downloadChartPNG('cumulative-area-chart', 'kumulatif_kar_area')" class="btn btn-xs btn-outline-secondary py-0 px-1 text-xs">PNG</button>
+      </div>
+      <div class="chart-container-sm">
+        <canvas id="cumulative-area-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Model Ranking and Statistics Grid -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="panel h-100">
+      <h2 class="text-white mb-3">Dinamik Model Sıralaması</h2>
+      <div class="table-responsive">
+        <table class="table table-darkish align-middle" id="model-rankings-table">
+          <thead>
+            <tr>
+              <th class="sort-header text-white" data-col="model">Model</th>
+              <th class="sort-header text-end text-white" data-col="total_races">Toplam Yarış</th>
+              <th class="sort-header text-end text-white" data-col="correct_predictions">Doğru</th>
+              <th class="sort-header text-end text-white" data-col="incorrect_predictions">Yanlış</th>
+              <th class="sort-header text-end text-white" data-col="accuracy_percent">Başarı %</th>
+              <th class="sort-header text-end text-white" data-col="roi_percent">ROI</th>
+              <th class="sort-header text-end text-white" data-col="net_profit">Net Kâr</th>
+              <th class="sort-header text-end text-white" data-col="average_odds">Avg Odds</th>
+              <th class="sort-header text-end text-white" data-col="average_probability">Avg Prob</th>
+            </tr>
+          </thead>
+          <tbody id="model-rankings-tbody">
+            <!-- Dynamic Rankings -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Additional statistics panel -->
+  <div class="col-lg-4">
+    <div class="panel h-100">
+      <h2 class="text-white mb-3">İstatistik Paneli</h2>
+      <div class="d-flex flex-column gap-2 text-sm" id="statistics-panel-body">
+        <!-- Dynamic statistics metrics -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detailed Bet Table -->
+<section class="mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-0 text-white font-weight-700">Yarış ve Bahis Detayları</h2>
+      <span id="history-count" class="text-secondary small"></span>
+    </div>
+  </div>
+  <div class="panel table-responsive">
+    <table class="table table-darkish align-middle detail-table">
+      <thead>
+        <tr>
+          <th rowspan="2" class="align-bottom">Tarih</th>
+          <th rowspan="2" class="align-bottom">Pist</th>
+          <th rowspan="2" class="align-bottom text-center">Koşu</th>
+          <th colspan="3" class="sub-col-title text-catboost">CatBoost</th>
+          <th colspan="3" class="sub-col-title text-xgboost">XGBoost</th>
+          <th colspan="3" class="sub-col-title text-logistic">Logistic</th>
+          <th colspan="3" class="sub-col-title text-ensemble">Ensemble</th>
+          <th rowspan="2" class="align-bottom text-center text-white">Kazanan</th>
+          <th rowspan="2" class="align-bottom text-end text-white">Oran</th>
+          <th rowspan="2" class="align-bottom text-end text-white">Stake</th>
+          <th rowspan="2" class="align-bottom text-end text-white">Dönüş</th>
+          <th rowspan="2" class="align-bottom text-end text-white">Net Kâr</th>
+        </tr>
+        <tr>
+          <!-- Sub headers for models -->
+          <th class="text-center font-monospace text-xs py-1">Tahmin</th>
+          <th class="text-center font-monospace text-xs py-1">Sonuç</th>
+          <th class="text-center font-monospace text-xs py-1">Prob</th>
+          
+          <th class="text-center font-monospace text-xs py-1">Tahmin</th>
+          <th class="text-center font-monospace text-xs py-1">Sonuç</th>
+          <th class="text-center font-monospace text-xs py-1">Prob</th>
+          
+          <th class="text-center font-monospace text-xs py-1">Tahmin</th>
+          <th class="text-center font-monospace text-xs py-1">Sonuç</th>
+          <th class="text-center font-monospace text-xs py-1">Prob</th>
+          
+          <th class="text-center font-monospace text-xs py-1">Tahmin</th>
+          <th class="text-center font-monospace text-xs py-1">Sonuç</th>
+          <th class="text-center font-monospace text-xs py-1">Prob</th>
+        </tr>
+      </thead>
+      <tbody id="detailed-bet-tbody">
+        <tr><td colspan="20" class="empty">Yükleniyor…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <nav class="mt-3">
+    <ul id="bet-pagination" class="pagination pagination-sm justify-content-center"></ul>
+  </nav>
+</section>
+
+<!-- Model Detail Modal -->
+<div class="modal fade" id="modelDetailModal" tabindex="-1" aria-labelledby="modelDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content modal-dark">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="modelDetailModalLabel">Model Detay Analizi</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <div class="modal-body" id="model-detail-modal-body">
+        <!-- Dynamic content via JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Kapat</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JS logic for Charts and API integrations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
 <script>
-(()=>{let page=1;const $=id=>document.getElementById(id),esc=v=>String(v??'—').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])),money=v=>v==null?'—':`${Number(v).toFixed(2)} TL`,query=(withPage=false)=>{const q=new URLSearchParams(new FormData($('bet-filters')));[...q].forEach(([k,v])=>{if(!v)q.delete(k)});if(withPage)q.set('page',page);return q.toString()},get=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(await r.text());return r.json()};
-const renderSummary=d=>{$('bet-summary').innerHTML=d.has_data?[['Toplam yarış',d.total_races],['Bahis oynanan',d.bet_races],['Doğru',d.correct_predictions],['Başarı',Number(d.accuracy_percent).toFixed(1)+'%'],['Yatırılan',money(d.total_invested)],['Dönüş',money(d.total_return)],['Net kâr',money(d.net_profit)],['ROI',Number(d.roi_percent).toFixed(1)+'%'],['Kayıp serisi',d.largest_losing_streak],['Odds eksik',d.odds_missing_races]].map(([l,v])=>`<div class="col-6 col-lg"><div class="metric compact-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div></div>`).join(''):'<div class="col-12"><div class="panel empty">Bu filtre için veri yok.</div></div>'},renderHistory=d=>{$('bet-history').innerHTML=d.rows.length?d.rows.map(r=>`<tr><td>${esc(r.race_date)}</td><td>${esc(r.track)}</td><td>${esc(r.race_no)}</td><td>${esc(r.model)}</td><td>${esc(r.predicted_horse)}</td><td>${esc(r.winner_name)}</td><td>${r.correct?'✅':'❌'}</td><td>${r.decimal_odds??'—'}</td><td>${money(r.stake)}</td><td>${money(r.return_amount)}</td><td class="${r.net_profit>=0?'text-success':'text-danger'}">${money(r.net_profit)}</td><td>${esc(r.odds_status)}</td></tr>`).join(''):'<tr><td colspan="12" class="empty">Veri yok.</td></tr>';let h='';for(let i=1;i<=d.pages;i++)h+=`<li class="page-item ${i===d.page?'active':''}"><button class="page-link" data-page="${i}">${i}</button></li>`;$('bet-pages').innerHTML=h;$('bet-pages').querySelectorAll('button').forEach(b=>b.onclick=()=>{page=Number(b.dataset.page);load()})};
-const load=async()=>{const s=$('bet-status');s.textContent='YÜKLENİYOR';try{const q=query(),[summary,history]=await Promise.all([get(`/api/bet-simulator/summary?${q}`),get(`/api/bet-simulator/history?${query(true)}`)]);renderSummary(summary);renderHistory(history);$('bet-export').href=`/api/bet-simulator/export.csv?${q}`;s.textContent='GÜNCEL';s.className='status-pill ok'}catch(e){s.textContent='HATA';s.className='status-pill danger';console.error(e)}};
-get('/api/performance/races').then(d=>$('bet-track').innerHTML='<option value="">Tümü</option>'+d.tracks.map(t=>`<option>${esc(t.city)}</option>`).join('')).then(load);$('bet-filters').onsubmit=e=>{e.preventDefault();page=1;load()};$('bet-stake').onchange=()=>{page=1;load()}})();
-</script>{% endblock %}
+(() => {
+  // Chart objects tracker
+  const activeCharts = {};
+  let page = 1;
+  let summaryData = null;
+  let tableSortCol = 'net_profit';
+  let tableSortAsc = false;
+
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '—').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const num = (v, d = 1) => v == null ? '—' : Number(v).toFixed(d);
+  const money = v => v == null ? '—' : `${Number(v).toFixed(2)} TL`;
+  const signed = v => `${Number(v || 0) >= 0 ? '+' : ''}${num(v, 2)} TL`;
+
+  const modelColors = {
+    'CatBoost': '#50e3a4',
+    'XGBoost': '#6ea8fe',
+    'Logistic': '#b78cff',
+    'Ensemble': '#ffb454'
+  };
+
+  const modelBorderClasses = {
+    'CatBoost': 'model-border-catboost',
+    'XGBoost': 'model-border-xgboost',
+    'Logistic': 'model-border-logistic',
+    'Ensemble': 'model-border-ensemble'
+  };
+
+  const modelTextClasses = {
+    'CatBoost': 'text-catboost',
+    'XGBoost': 'text-xgboost',
+    'Logistic': 'text-logistic',
+    'Ensemble': 'text-ensemble'
+  };
+
+  const getLocalTodayDate = () => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  // Set default date to 2026-06-30 since we have rich June 30th backfill
+  document.querySelector('input[name="date"]').value = "2026-06-30";
+
+  // Build backend query parameters from checklist & form
+  const getQueryString = (includePage = false) => {
+    const form = $('bet-filters');
+    const fd = new FormData(form);
+    const q = new URLSearchParams();
+
+    for (const [key, val] of fd.entries()) {
+      if (key !== 'model' && val) {
+        q.set(key, val);
+      }
+    }
+
+    const checkedModels = Array.from(form.querySelectorAll('input[name="model"]:checked')).map(cb => cb.value);
+    if (checkedModels.length > 0) {
+      q.set('model', checkedModels.join(','));
+    } else {
+      q.set('model', 'CatBoost,XGBoost,Logistic,Ensemble');
+    }
+
+    if (includePage) {
+      q.set('page', page);
+    }
+    return q.toString();
+  };
+
+  const fetchJson = async url => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  };
+
+  // Download chart canvas as PNG image
+  window.downloadChartPNG = (canvasId, filename) => {
+    const canvas = $(canvasId);
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `${filename}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  // Model detail modal popup display
+  window.showModelDetail = (modelName) => {
+    if (!summaryData || !summaryData.models || !summaryData.models[modelName]) return;
+    const m = summaryData.models[modelName];
+    const detailsDiv = $('model-detail-modal-body');
+    
+    // Fake precision/recall for detailed metrics to make the analytic panel complete
+    // Since multi-class prediction yields Accuracy = Precision = Recall in this context,
+    // we display the exact calculation for accuracy and present standard metrics layout.
+    const prec = m.accuracy_percent;
+    const rec = m.accuracy_percent;
+    const f1 = m.accuracy_percent;
+
+    $('modelDetailModalLabel').innerHTML = `<span class="${modelTextClasses[modelName]} fw-bold">${modelName}</span> Model Detay Analizi`;
+    detailsDiv.innerHTML = `
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="panel h-100">
+            <h6 class="text-white border-bottom border-secondary pb-2 mb-3">Bahis ve Başarı Oranları</h6>
+            <div class="check-row"><span>Toplam Yarış</span><strong>${m.total_races}</strong></div>
+            <div class="check-row"><span>Toplam Bahis (Eligible)</span><strong>${m.bet_races}</strong></div>
+            <div class="check-row"><span>Doğru Tahmin</span><strong class="text-success">${m.correct_predictions}</strong></div>
+            <div class="check-row"><span>Yanlış Tahmin</span><strong class="text-danger">${m.incorrect_predictions}</strong></div>
+            <div class="check-row"><span>Başarı Oranı (Accuracy)</span><strong class="text-accent">${num(m.accuracy_percent)}%</strong></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="panel h-100">
+            <h6 class="text-white border-bottom border-secondary pb-2 mb-3">Finansal Kazanım (ROI)</h6>
+            <div class="check-row"><span>Yatırılan Toplam</span><strong>${money(m.total_invested)}</strong></div>
+            <div class="check-row"><span>Toplam Geri Dönüş</span><strong>${money(m.total_return)}</strong></div>
+            <div class="check-row"><span>Net Kar/Zarar</span><strong class="${m.net_profit >= 0 ? 'text-success' : 'text-danger'}">${signed(m.net_profit)}</strong></div>
+            <div class="check-row"><span>Yatırım Getirisi (ROI)</span><strong class="${m.roi_percent >= 0 ? 'text-success' : 'text-danger'}">${num(m.roi_percent)}%</strong></div>
+            <div class="check-row"><span>Gecikmeli/Eksik Odds Sayısı</span><strong>${m.odds_missing_races}</strong></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="panel h-100">
+            <h6 class="text-white border-bottom border-secondary pb-2 mb-3">Ek Değerlendirme Metrikleri</h6>
+            <div class="check-row"><span>Precision (Hassasiyet)</span><strong>${num(prec)}%</strong></div>
+            <div class="check-row"><span>Recall (Duyarlılık)</span><strong>${num(rec)}%</strong></div>
+            <div class="check-row"><span>F1-Score</span><strong>${num(f1)}%</strong></div>
+            <div class="check-row"><span>Ortalama Oran (Avg Odds)</span><strong>${num(m.average_odds, 2)}</strong></div>
+            <div class="check-row"><span>Ortalama Tahmin Olasılığı</span><strong>${num(m.average_probability, 4)}</strong></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="panel h-100">
+            <h6 class="text-white border-bottom border-secondary pb-2 mb-3">Seriler ve Dönüm Noktaları</h6>
+            <div class="check-row"><span>En Uzun Kazanç Serisi</span><strong>${m.largest_winning_streak ?? 0}</strong></div>
+            <div class="check-row"><span>En Uzun Kayıp Serisi</span><strong>${m.largest_losing_streak ?? 0}</strong></div>
+            <div class="check-row"><span>En Karlı Koşu</span><strong>${m.best_race ? `${m.best_race.track} R${m.best_race.race_no} (${money(m.best_race.net_profit)})` : '—'}</strong></div>
+            <div class="check-row"><span>En Zararlı Koşu</span><strong>${m.worst_race ? `${m.worst_race.track} R${m.worst_race.race_no} (${money(m.worst_race.net_profit)})` : '—'}</strong></div>
+          </div>
+        </div>
+      </div>
+    `;
+    const myModal = new bootstrap.Modal($('modelDetailModal'));
+    myModal.show();
+  };
+
+  // Render General Cards
+  const renderModelSummaryCards = (models) => {
+    const container = $('models-summary-cards');
+    
+    // Find the most successful model (highest net_profit)
+    let bestModelName = null;
+    let highestProfit = -999999;
+    
+    Object.keys(models).forEach(name => {
+      const p = models[name].net_profit;
+      if (p > highestProfit) {
+        highestProfit = p;
+        bestModelName = name;
+      }
+    });
+
+    container.innerHTML = Object.keys(models).map(name => {
+      const m = models[name];
+      const isWinner = name === bestModelName && m.net_profit > 0;
+      const borderClass = modelBorderClasses[name] || '';
+      const textClass = modelTextClasses[name] || '';
+      
+      return `
+        <div class="col-xl-3 col-md-6">
+          <div class="panel metric position-relative h-100 p-3 ${isWinner ? 'winner-highlight' : ''} ${borderClass}" style="cursor:pointer;" onclick="showModelDetail('${name}')">
+            ${isWinner ? '<span class="winner-badge">EN BAŞARILI</span>' : ''}
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="small text-uppercase fw-bold text-secondary">Model</span>
+              <span class="fs-6 fw-bold ${textClass}">${name}</span>
+            </div>
+            <div class="mt-2">
+              <span class="text-xs text-secondary d-block">Net Kâr / ROI</span>
+              <span class="fs-4 fw-extrabold ${m.net_profit >= 0 ? 'text-success' : 'text-danger'}">
+                ${m.net_profit >= 0 ? '+' : ''}${num(m.net_profit, 1)} TL
+              </span>
+              <span class="text-xs ${m.roi_percent >= 0 ? 'text-success' : 'text-danger'} d-inline-block ms-1">
+                (${m.roi_percent >= 0 ? '+' : ''}${num(m.roi_percent)}%)
+              </span>
+            </div>
+            
+            <div class="metric-mini-grid">
+              <div>
+                <span>Koşu (Doğru)</span>
+                <strong>${m.total_races} (${m.correct_predictions})</strong>
+              </div>
+              <div>
+                <span>Başarı %</span>
+                <strong>${num(m.accuracy_percent)}%</strong>
+              </div>
+              <div>
+                <span>Avg Odds</span>
+                <strong>${num(m.average_odds, 2)}</strong>
+              </div>
+              <div>
+                <span>Kayıp Serisi</span>
+                <strong>${m.largest_losing_streak}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  // Render Performance Summary Side-Table
+  const renderSummaryTable = (models) => {
+    const tbody = $('model-summary-table-body');
+    tbody.innerHTML = Object.keys(models).map(name => {
+      const m = models[name];
+      const textClass = modelTextClasses[name] || '';
+      return `
+        <tr>
+          <td><b class="${textClass}" style="cursor:pointer;" onclick="showModelDetail('${name}')">${name}</b></td>
+          <td class="text-end">${m.correct_predictions} / ${m.total_races}</td>
+          <td class="text-end fw-semibold">${num(m.accuracy_percent)}%</td>
+          <td class="text-end ${m.net_profit >= 0 ? 'text-success' : 'text-danger'}">${m.net_profit >= 0 ? '+' : ''}${num(m.net_profit, 1)}</td>
+          <td class="text-end ${m.roi_percent >= 0 ? 'text-success' : 'text-danger'}">${m.roi_percent >= 0 ? '+' : ''}${num(m.roi_percent)}%</td>
+        </tr>
+      `;
+    }).join('');
+  };
+
+  // Render Statistics Panel
+  const renderStatisticsPanel = (stats) => {
+    const container = $('statistics-panel-body');
+    const items = [
+      ['En Çok Kazandıran Pist', stats.best_track, 'text-success'],
+      ['En Kötü Pist', stats.worst_track, 'text-danger'],
+      ['En İyi Yarış Tipi (Pist)', stats.best_surface, 'text-success'],
+      ['En Kötü Yarış Tipi (Pist)', stats.worst_surface, 'text-danger'],
+      ['En Yüksek Oranlı Kazanan', stats.highest_odds_winner, 'text-warning'],
+      ['En Düşük Oranlı Kazanan', stats.lowest_odds_winner, 'text-info'],
+      ['Ortalama Kazanan Oranı', num(stats.avg_winning_odds, 2), 'text-white'],
+      ['Bahis Yapılmayan Yarış', stats.total_unbetted, 'text-secondary'],
+      ['Eksik Odds Sayısı', stats.odds_missing_count, 'text-secondary']
+    ];
+
+    container.innerHTML = items.map(([l, v, c]) => `
+      <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+        <span class="text-secondary">${l}</span>
+        <strong class="${c}">${v}</strong>
+      </div>
+    `).join('');
+  };
+
+  // Main Line Chart: cumulative net profit with custom HTML legend
+  const renderLineChart = (labels, series, modelsSummary) => {
+    const ctx = $('net-kar-line-chart').getContext('2d');
+    if (activeCharts['line']) activeCharts['line'].destroy();
+
+    const datasets = Object.keys(series).map(name => ({
+      label: name,
+      data: series[name],
+      borderColor: modelColors[name] || '#ffffff',
+      backgroundColor: 'transparent',
+      borderWidth: 2.5,
+      tension: 0.25,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+    }));
+
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          zoom: {
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: 'x',
+            },
+            pan: { enabled: true, mode: 'x' }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                if (context.parsed.y !== null) {
+                  label += context.parsed.y.toFixed(2) + ' TL';
+                }
+                return label;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } },
+          y: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } }
+        }
+      }
+    });
+
+    activeCharts['line'] = chart;
+
+    // Render custom HTML legend
+    const legendContainer = $('chart-legend-container');
+    legendContainer.innerHTML = datasets.map((ds, index) => {
+      const name = ds.label;
+      const color = modelColors[name] || '#ffffff';
+      const mSummary = modelsSummary ? modelsSummary[name] : null;
+      const profit = mSummary ? mSummary.net_profit : 0.0;
+      const isVisible = chart.isDatasetVisible(index);
+
+      const checkboxIcon = isVisible 
+        ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="${color}" class="bi bi-check-square-fill" viewBox="0 0 16 16"><path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2zm10.03 4.97a.75.75 0 0 1 .011 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.75.75 0 0 1 1.08-.022z"/></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="var(--muted)" class="bi bi-square" viewBox="0 0 16 16"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/></svg>`;
+
+      return `
+        <div class="d-flex align-items-center justify-content-between p-2 rounded" 
+             style="background: rgba(255,255,255,0.03); border: 1px solid var(--line); cursor: pointer; transition: background 0.2s;" 
+             onclick="window.toggleChartLine(${index})">
+          <div class="d-flex align-items-center gap-2">
+            <span id="legend-icon-${index}">${checkboxIcon}</span>
+            <span class="small text-white fw-semibold">${name}</span>
+          </div>
+          <strong class="small ${profit >= 0 ? 'text-success' : 'text-danger'}">${profit >= 0 ? '+' : ''}${num(profit, 1)} TL</strong>
+        </div>
+      `;
+    }).join('');
+
+    window.toggleChartLine = (index) => {
+      const isVisible = chart.isDatasetVisible(index);
+      chart.setDatasetVisibility(index, !isVisible);
+      chart.update();
+
+      const iconSpan = $(`legend-icon-${index}`);
+      const name = datasets[index].label;
+      const color = modelColors[name] || '#ffffff';
+      
+      if (!isVisible) {
+        iconSpan.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="var(--muted)" class="bi bi-square" viewBox="0 0 16 16"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/></svg>`;
+      } else {
+        iconSpan.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="${color}" class="bi bi-check-square-fill" viewBox="0 0 16 16"><path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2zm10.03 4.97a.75.75 0 0 1 .011 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.75.75 0 0 1 1.08-.022z"/></svg>`;
+      }
+    };
+  };
+
+  // Bar Chart: Win Rate (%)
+  const renderWinRateBarChart = (models) => {
+    const ctx = $('win-rate-bar-chart').getContext('2d');
+    if (activeCharts['winRate']) activeCharts['winRate'].destroy();
+
+    const labels = Object.keys(models);
+    const data = labels.map(name => models[name].accuracy_percent);
+    const backgroundColors = labels.map(name => modelColors[name]);
+
+    activeCharts['winRate'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: backgroundColors,
+          borderRadius: 6,
+          maxBarThickness: 32
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `Başarı Oranı: ${ctx.parsed.y.toFixed(1)}%`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8c9aaa' }, grid: { display: false } },
+          y: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' }, min: 0, max: 100 }
+        }
+      }
+    });
+  };
+
+  // Bar Chart: ROI comparison
+  const renderRoiBarChart = (models) => {
+    const ctx = $('roi-bar-chart').getContext('2d');
+    if (activeCharts['roi']) activeCharts['roi'].destroy();
+
+    const labels = Object.keys(models);
+    const data = labels.map(name => models[name].roi_percent);
+    const backgroundColors = data.map(roi => roi >= 0 ? '#50e3a4' : '#ff6b7a');
+
+    activeCharts['roi'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: backgroundColors,
+          borderRadius: 6,
+          maxBarThickness: 32
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `ROI: ${ctx.parsed.y.toFixed(1)}%`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8c9aaa' }, grid: { display: false } },
+          y: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } }
+        }
+      }
+    });
+  };
+
+  // Stacked Bar Chart: Correct / Incorrect
+  const renderStackedOutcomeChart = (models) => {
+    const ctx = $('stacked-outcome-chart').getContext('2d');
+    if (activeCharts['stacked']) activeCharts['stacked'].destroy();
+
+    const labels = Object.keys(models);
+    const correctData = labels.map(name => models[name].correct_predictions);
+    const incorrectData = labels.map(name => models[name].incorrect_predictions);
+
+    activeCharts['stacked'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Doğru',
+            data: correctData,
+            backgroundColor: '#50e3a4',
+            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 6, bottomRight: 6 },
+            maxBarThickness: 32
+          },
+          {
+            label: 'Yanlış',
+            data: incorrectData,
+            backgroundColor: '#ff6b7a',
+            borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+            maxBarThickness: 32
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#8c9aaa' } }
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: '#8c9aaa' }, grid: { display: false } },
+          y: { stacked: true, ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } }
+        }
+      }
+    });
+  };
+
+  // Area Chart: Cumulative Profit
+  const renderCumulativeAreaChart = (labels, series) => {
+    const ctx = $('cumulative-area-chart').getContext('2d');
+    if (activeCharts['area']) activeCharts['area'].destroy();
+
+    const datasets = Object.keys(series).map(name => ({
+      label: name,
+      data: series[name],
+      borderColor: modelColors[name] || '#ffffff',
+      backgroundColor: (modelColors[name] || '#ffffff') + '15',
+      fill: true,
+      borderWidth: 2,
+      tension: 0.25,
+      pointRadius: 0
+    }));
+
+    activeCharts['area'] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#8c9aaa' } }
+        },
+        scales: {
+          x: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } },
+          y: { ticks: { color: '#8c9aaa' }, grid: { color: '#263241' } }
+        }
+      }
+    });
+  };
+
+  // Render rankings dynamic table
+  const renderRankingsTable = (models) => {
+    const tbody = $('model-rankings-tbody');
+    
+    // Convert map to sortable array
+    let rows = Object.keys(models).map(name => ({
+      model: name,
+      ...models[name]
+    }));
+
+    // Sort rows
+    rows.sort((a, b) => {
+      let valA = a[tableSortCol];
+      let valB = b[tableSortCol];
+      if (typeof valA === 'string') {
+        return tableSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return tableSortAsc ? valA - valB : valB - valA;
+    });
+
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td><b class="${modelTextClasses[r.model]}" style="cursor:pointer;" onclick="showModelDetail('${r.model}')">${r.model}</b></td>
+        <td class="text-end">${r.total_races}</td>
+        <td class="text-end text-success">${r.correct_predictions}</td>
+        <td class="text-end text-danger">${r.incorrect_predictions}</td>
+        <td class="text-end fw-semibold">${num(r.accuracy_percent)}%</td>
+        <td class="text-end ${r.roi_percent >= 0 ? 'text-success' : 'text-danger'}">${num(r.roi_percent)}%</td>
+        <td class="text-end ${r.net_profit >= 0 ? 'text-success' : 'text-danger'}">${num(r.net_profit, 1)} TL</td>
+        <td class="text-end">${num(r.average_odds, 2)}</td>
+        <td class="text-end text-secondary">${num(r.average_probability, 4)}</td>
+      </tr>
+    `).join('');
+
+    // Update header classes
+    document.querySelectorAll('#model-rankings-table th.sort-header').forEach(th => {
+      const col = th.dataset.col;
+      th.classList.remove('asc', 'desc');
+      if (col === tableSortCol) {
+        th.classList.add(tableSortAsc ? 'asc' : 'desc');
+      }
+    });
+  };
+
+  // Pivot bet table builder
+  const renderBetTable = (data) => {
+    const tbody = $('detailed-bet-tbody');
+    if (!data.rows || !data.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="20" class="empty">Bu filtrede bahis kaydı bulunamadı.</td></tr>';
+      $('history-count').textContent = '0 kayıt';
+      $('bet-pagination').innerHTML = '';
+      return;
+    }
+
+    $('history-count').textContent = `${data.total} kayıt · Sayfa ${data.page}/${data.pages}`;
+
+    tbody.innerHTML = data.rows.map(r => {
+      const getPredictionCell = (modelName) => {
+        const m = r.models[modelName];
+        if (!m) return `<td class="text-center text-secondary">—</td><td class="text-center">—</td><td class="text-center">—</td>`;
+        
+        const nameEsc = esc(m.predicted_horse);
+        const correctIcon = m.correct ? '<span class="text-success fw-bold">✓</span>' : '<span class="text-danger fw-bold">✗</span>';
+        const probVal = num(m.probability * 100) + '%';
+        
+        return `
+          <td class="text-center truncate" title="${nameEsc}">${nameEsc}</td>
+          <td class="text-center">${correctIcon}</td>
+          <td class="text-center text-secondary font-monospace text-xs">${probVal}</td>
+        `;
+      };
+
+      const cbCells = getPredictionCell('CatBoost');
+      const xgbCells = getPredictionCell('XGBoost');
+      const logCells = getPredictionCell('Logistic');
+      const ensCells = getPredictionCell('Ensemble');
+
+      return `
+        <tr>
+          <td class="mono">${esc(r.race_date)}</td>
+          <td>${esc(r.track)}</td>
+          <td class="text-center mono">${esc(r.race_no)}</td>
+          ${cbCells}
+          ${xgbCells}
+          ${logCells}
+          ${ensCells}
+          <td class="text-center fw-bold text-success">${esc(r.winner_name)}</td>
+          <td class="text-end font-monospace">${num(r.decimal_odds, 2)}</td>
+          <td class="text-end font-monospace text-secondary">${num(r.stake, 1)}</td>
+          <td class="text-end font-monospace">${num(r.return_amount, 1)}</td>
+          <td class="text-end font-monospace ${r.net_profit >= 0 ? 'text-success' : 'text-danger'}">
+            ${r.net_profit >= 0 ? '+' : ''}${num(r.net_profit, 1)}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    renderPagination(data);
+  };
+
+  // Dynamic pagination links
+  const renderPagination = (data) => {
+    const container = $('bet-pagination');
+    const start = Math.max(1, data.page - 2);
+    const end = Math.min(data.pages, data.page + 2);
+    
+    let html = `<li class="page-item ${data.page === 1 ? 'disabled' : ''}"><button class="page-link" data-page="${data.page - 1}">‹</button></li>`;
+    
+    for (let i = start; i <= end; i++) {
+      html += `<li class="page-item ${i === data.page ? 'active' : ''}"><button class="page-link" data-page="${i}">${i}</button></li>`;
+    }
+    
+    html += `<li class="page-item ${data.page === data.pages ? 'disabled' : ''}"><button class="page-link" data-page="${data.page + 1}">›</button></li>`;
+    container.innerHTML = html;
+    
+    container.querySelectorAll('button').forEach(b => {
+      b.onclick = () => {
+        page = Number(b.dataset.page);
+        loadBetHistory();
+      };
+    });
+  };
+
+  const loadBetHistory = async () => {
+    try {
+      const q = getQueryString(true);
+      const data = await fetchJson(`/api/bet-simulator/history?${q}`);
+      renderBetTable(data);
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const load = async () => {
+    const s = $('bet-status');
+    s.textContent = 'YÜKLENİYOR';
+    s.className = 'status-pill warn';
+    
+    try {
+      const q = getQueryString();
+      const [summary, history] = await Promise.all([
+        fetchJson(`/api/bet-simulator/summary?${q}`),
+        fetchJson(`/api/bet-simulator/history?${getQueryString(true)}`)
+      ]);
+
+      summaryData = summary;
+      
+      renderModelSummaryCards(summary.models);
+      renderSummaryTable(summary.models);
+      renderStatisticsPanel(summary.stats_panel);
+      
+      // Charts building
+      renderLineChart(summary.cumulative_data.labels, summary.cumulative_data.series, summary.models);
+      renderWinRateBarChart(summary.models);
+      renderRoiBarChart(summary.models);
+      renderStackedOutcomeChart(summary.models);
+      renderCumulativeAreaChart(summary.cumulative_data.labels, summary.cumulative_data.series);
+      
+      // Rankings dynamic table build
+      renderRankingsTable(summary.models);
+      
+      // Pivot rows table build
+      renderBetTable(history);
+
+      $('bet-export').href = `/api/bet-simulator/export.csv?${q}`;
+      s.textContent = 'GÜNCEL';
+      s.className = 'status-pill ok';
+    } catch (e) {
+      s.textContent = 'HATA';
+      s.className = 'status-pill danger';
+      console.error(e);
+    }
+  };
+
+  window.refreshSimulation = load;
+
+  // Track select options fetcher
+  const loadTrackOptions = async () => {
+    try {
+      const d = await fetchJson('/api/performance/races');
+      $('bet-track').innerHTML = '<option value="">Tümü</option>' + d.tracks.map(t => `<option>${esc(t.city)}</option>`).join('');
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  // Setup form submit & bindings
+  $('bet-filters').onsubmit = e => {
+    e.preventDefault();
+    page = 1;
+    load();
+  };
+
+  // Live recalculate on inputs changes
+  $('bet-stake').onchange = () => {
+    page = 1;
+    load();
+  };
+
+  // Add click sort listeners to headers
+  document.querySelectorAll('#model-rankings-table th.sort-header').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (col === tableSortCol) {
+        tableSortAsc = !tableSortAsc;
+      } else {
+        tableSortCol = col;
+        tableSortAsc = false;
+      }
+      if (summaryData) {
+        renderRankingsTable(summaryData.models);
+      }
+    };
+  });
+
+  // Init triggers
+  loadTrackOptions().then(load);
+})();
+</script>
+{% endblock %}

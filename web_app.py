@@ -104,6 +104,8 @@ def _unauthorized() -> JSONResponse:
 
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
     header = request.headers.get("Authorization", "")
     authenticated = False
     if header.startswith("Basic "):
@@ -118,6 +120,31 @@ async def basic_auth(request: Request, call_next):
     if not authenticated:
         return _unauthorized()
     return await call_next(request)
+
+
+@app.get("/health")
+async def health():
+    try:
+        connection = readonly_connection()
+        connection.execute("SELECT 1").fetchone()
+        connection.close()
+        db_status = "ok"
+    except Exception as e:
+        db_status = f"error: {e}"
+
+    commit_hash = "unknown"
+    try:
+        commit_hash = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=str(PROJECT_ROOT), text=True
+        ).strip()
+    except Exception:
+        pass
+
+    return {
+        "status": "healthy" if db_status == "ok" else "unhealthy",
+        "database": db_status,
+        "commit": commit_hash,
+    }
 
 
 def readonly_connection() -> sqlite3.Connection:
@@ -666,32 +693,32 @@ def api_diagnostics_export(date: str | None = None, track: str | None = None,
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
-def _bet_filters(date=None, track=None, model="Ensemble", outcome="all", stake=20):
+def _bet_filters(date=None, track=None, model="Ensemble", outcome="all", stake=20, race_no=None):
     try:
-        return normalize_bet_filters(date, track, model, outcome, stake)
+        return normalize_bet_filters(date, track, model, outcome, stake, race_no=race_no)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/bet-simulator/summary")
 def api_bet_summary(date: str | None = None, track: str | None = None, model: str = "Ensemble",
-                    outcome: str = "all", stake: float = 20):
-    filters=_bet_filters(date,track,model,outcome,stake)
+                    outcome: str = "all", stake: float = 20, race_no: str | None = None):
+    filters=_bet_filters(date,track,model,outcome,stake,race_no)
     return _performance_cached("bet_summary",filters,query_bet_summary)
 
 
 @app.get("/api/bet-simulator/history")
 def api_bet_history(page: int = 1, date: str | None = None, track: str | None = None,
-                    model: str = "Ensemble", outcome: str = "all", stake: float = 20):
+                    model: str = "Ensemble", outcome: str = "all", stake: float = 20, race_no: str | None = None):
     if page<1: raise HTTPException(status_code=400,detail="page must be >= 1")
-    filters=_bet_filters(date,track,model,outcome,stake)
+    filters=_bet_filters(date,track,model,outcome,stake,race_no)
     return _performance_cached("bet_history",filters,query_bet_history,page)
 
 
 @app.get("/api/bet-simulator/export.csv")
 def api_bet_export(date: str | None = None, track: str | None = None, model: str = "Ensemble",
-                   outcome: str = "all", stake: float = 20):
-    filters=_bet_filters(date,track,model,outcome,stake)
+                   outcome: str = "all", stake: float = 20, race_no: str | None = None):
+    filters=_bet_filters(date,track,model,outcome,stake,race_no)
     def stream():
         with readonly_connection() as connection:
             rows=iter(query_bet_export(connection,filters)); first=next(rows,None)

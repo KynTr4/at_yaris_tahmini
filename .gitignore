@@ -21,3 +21,4 @@ lake/
 data/agfv2_raw/
 reports/results_coverage_*.md
 vps_status.py
+tmp/

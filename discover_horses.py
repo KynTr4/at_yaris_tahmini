@@ -21,7 +21,7 @@ def i(v):
 def f(v):
     try: return float(str(v).replace(".","").replace(",",".")) if v not in (None,"") else None
     except (TypeError,ValueError): return None
-def text(v): return html.unescape(str(v)).strip() if v not in (None,"") else None
+def text(v): return html.unescape(str(v)).split('\n')[0].split('\r')[0].strip() if v not in (None,"") else None
 
 FIELDS=("source","source_record_id","tjk_id","horse_id","name","father_id","father_name","mother_id","mother_name","birth_date","age_text","sex","sex_id","race","race_id","country_id","country_name","owner","real_owner","breeder","trainer","earnings","starts","wins","seconds","thirds","fourths","discovery_payload_json","is_turkey","discovered_at")
 
@@ -75,7 +75,7 @@ async def discover_race_programs(c,args):
                     if not isinstance(entry,dict): continue
                     hi=entry.get("HORSE_INFO") or {}; x={**hi,**{k:v for k,v in entry.items() if k!="HORSE_INFO"}}
                     upsert(args.db,record("race_program",x,is_turkey=True)); found+=1
-                    with connect(args.db) as db: db.execute("INSERT OR REPLACE INTO race_program_entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(ds,i(city.get("CITY_ID")),city.get("CITY_NAME"),i(tab.get("RACE_TAB_ID")),tab.get("RACE_TAB_NAME") or tab.get("TITLE"),tab.get("RACE_NO"),str(entry.get("TJK_ID")) if entry.get("TJK_ID") else None,i(hi.get("HORSE_ID")),entry.get("HORSE_NAME") or hi.get("HORSE_NAME"),i(entry.get("AGE")),entry.get("WEIGHT"),entry.get("JOCKEY"),entry.get("OWNER"),entry.get("COACH"),entry.get("START"),entry.get("HANDICAP"),entry.get("LAST_6_RACE"),entry.get("KGS"),entry.get("GNY"),entry.get("AGF"),entry.get("DERECE"),canonical(hi)))
+                    with connect(args.db) as db: db.execute("INSERT OR REPLACE INTO race_program_entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(ds,i(city.get("CITY_ID")),city.get("CITY_NAME"),i(tab.get("RACE_TAB_ID")),tab.get("RACE_TAB_NAME") or tab.get("TITLE"),tab.get("RACE_NO"),str(entry.get("TJK_ID")) if entry.get("TJK_ID") else None,i(hi.get("HORSE_ID")),text(entry.get("HORSE_NAME") or hi.get("HORSE_NAME")),i(entry.get("AGE")),entry.get("WEIGHT"),entry.get("JOCKEY"),entry.get("OWNER"),entry.get("COACH"),entry.get("START"),entry.get("HANDICAP"),entry.get("LAST_6_RACE"),entry.get("KGS"),entry.get("GNY"),entry.get("AGF"),entry.get("DERECE"),canonical(hi)))
         await c.checkpoint("public_discovery",marker,"race_program","completed",message=f"horses={found}")
     return found
 

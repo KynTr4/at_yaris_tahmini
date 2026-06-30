@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AT Yaris Nightly Cleanup Timer
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Europe/Istanbul
+Persistent=true
+Unit=at-yaris-cleanup.service
+
+[Install]
+WantedBy=timers.target

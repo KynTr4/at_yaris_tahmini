@@ -119,7 +119,7 @@ def insert_program_capture(
                 race_class, surface, distance = parse_title(tab)
                 for entry in tab.get("PROGRAM_LIST", []) or []:
                     horse_id = horse_entity(entry)
-                    horse_name = entry.get("HORSE_NAME")
+                    horse_name = str(entry.get("HORSE_NAME")).split('\n')[0].split('\r')[0].strip() if entry.get("HORSE_NAME") else None
                     cursor = connection.execute(
                         """INSERT OR IGNORE INTO program_snapshots(
                                race_id,horse_id,race_start_at,race_no,captured_at,

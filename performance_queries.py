@@ -90,11 +90,14 @@ winners AS (
     GROUP BY r.race_id
 ),
 evaluation_core AS (
-    SELECT p.prediction_id,p.race_id,p.prediction_time,p.race_start_at,p.model,p.model_version,
+    SELECT p.prediction_id,p.race_id,p.prediction_time,p.race_start_at,p.model,p.model_version,p.probability,
            p.horse_id AS predicted_horse_id,
            COALESCE(pp.horse_name,p.horse_id) AS predicted_horse,
            w.winner_name,w.winner_ids,
            COALESCE(rp.city,'Bilinmiyor') AS city,rp.race_no,
+           COALESCE(pp.race_class, 'Bilinmiyor') AS race_class,
+           COALESCE(pp.surface, 'Bilinmiyor') AS surface,
+           COALESCE(pp.distance, 0) AS distance,
            date(p.race_start_at,'+3 hours') AS race_date,
            strftime('%H:%M',p.race_start_at,'+3 hours') AS race_time,
            CASE WHEN instr('|'||w.winner_ids||'|','|'||p.horse_id||'|')>0 THEN 1 ELSE 0 END AS correct,
@@ -121,27 +124,37 @@ def normalize_filters(
     track: str | None = None,
     model: str | None = None,
     outcome: str = "all",
-) -> dict[str, str | None]:
+    race_no: str | int | None = None,
+    **kwargs,
+) -> dict[str, Any]:
     if date:
         try:
             datetime.strptime(date, "%Y-%m-%d")
         except ValueError as exc:
             raise ValueError("date must be YYYY-MM-DD") from exc
-    if model and model not in MODELS:
-        raise ValueError(f"model must be one of: {', '.join(MODELS)}")
+    if model:
+        models_list = [m.strip() for m in model.split(",")]
+        for m in models_list:
+            if m not in MODELS:
+                raise ValueError(f"model must be one of: {', '.join(MODELS)}")
     if outcome not in OUTCOMES:
         raise ValueError("outcome must be all, correct or incorrect")
-    return {"date": date or None, "track": track or None, "model": model or None, "outcome": outcome}
+    return {"date": date or None, "track": track or None, "model": model or None, "outcome": outcome, "race_no": race_no}
 
 
-def _where(filters: dict[str, str | None], *, include_model: bool = True) -> tuple[str, list[Any]]:
+def _where(filters: dict[str, Any], *, include_model: bool = True) -> tuple[str, list[Any]]:
     clauses, params = [], []
     if filters.get("date"):
         clauses.append("race_date=?"); params.append(filters["date"])
     if filters.get("track"):
         clauses.append("track_key(city)=track_key(?)"); params.append(filters["track"])
+    if filters.get("race_no") not in (None, ""):
+        clauses.append("race_no=?"); params.append(int(filters["race_no"]))
     if include_model and filters.get("model"):
-        clauses.append("model=?"); params.append(filters["model"])
+        models_list = [m.strip() for m in filters["model"].split(",")]
+        placeholders = ",".join("?" for _ in models_list)
+        clauses.append(f"model IN ({placeholders})")
+        params.extend(models_list)
     if filters.get("outcome") == "correct":
         clauses.append("correct=1")
     elif filters.get("outcome") == "incorrect":

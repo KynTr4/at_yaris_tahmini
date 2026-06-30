@@ -1,0 +1,11 @@
+/var/log/at_yaris_tahmini/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    size 100M
+    copytruncate
+    create 0640 at_yaris at_yaris
+}

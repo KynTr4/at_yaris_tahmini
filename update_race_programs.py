@@ -156,7 +156,7 @@ async def main():
                         # Save race program entry
                         tjk_id = str(entry.get("TJK_ID")) if entry.get("TJK_ID") else None
                         horse_id = i(hi.get("HORSE_ID"))
-                        horse_name = entry.get("HORSE_NAME") or hi.get("HORSE_NAME")
+                        horse_name = text(entry.get("HORSE_NAME") or hi.get("HORSE_NAME"))
                         
                         db.execute(
                             "INSERT OR REPLACE INTO race_program_entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
