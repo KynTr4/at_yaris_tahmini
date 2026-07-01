@@ -14,7 +14,7 @@ def get_latest_bundle():
     bundles = glob.glob('dist/at_yaris_tahmini_vps_with_web_*.tar.gz')
     if not bundles:
         raise Exception("No bundle found in dist/")
-    latest = max(bundles, key=os.path.getctime)
+    latest = max(bundles, key=os.path.getmtime)
     return latest
 
 def main():
@@ -58,7 +58,7 @@ def main():
             "STAMP=$(date +%Y%m%d_%H%M%S)",
             "BACKUP_DIR=/var/backups/at_yaris_tahmini/deploy_backup_${STAMP}",
             "mkdir -p $BACKUP_DIR",
-            "rsync -avz --exclude='pedigreeall_progress.db*' --exclude='*.db*' --exclude='output/final_benter_dataset.*' --exclude='logs/*' --exclude='backups/*' /opt/at_yaris_tahmini/ $BACKUP_DIR/",
+            "rsync -avz --exclude='pedigreeall_progress.db*' --exclude='*.db*' --exclude='output/final_benter_dataset.*' --exclude='logs/*' --exclude='backups/*' --exclude='.venv/*' --exclude='.git/*' --exclude='models/*' --exclude='output/*' /opt/at_yaris_tahmini/ $BACKUP_DIR/",
             "echo 'Backup created at '$BACKUP_DIR",
             
             f"cd {REMOTE_TMP_DIR} && tar -xzf {bundle_name}",
