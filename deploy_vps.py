@@ -58,7 +58,7 @@ def main():
             "STAMP=$(date +%Y%m%d_%H%M%S)",
             "BACKUP_DIR=/var/backups/at_yaris_tahmini/deploy_backup_${STAMP}",
             "mkdir -p $BACKUP_DIR",
-            "rsync -avz --exclude='pedigreeall_progress.db*' --exclude='*.db*' --exclude='output/final_benter_dataset.*' --exclude='logs/*' --exclude='backups/*' --exclude='.venv/*' --exclude='.git/*' --exclude='models/*' --exclude='output/*' /opt/at_yaris_tahmini/ $BACKUP_DIR/",
+            "rsync -avz --exclude='pedigreeall_progress.db*' --exclude='*.db*' --exclude='.env' --exclude='logs' --exclude='backups' --exclude='.venv' --exclude='.git' --exclude='models' --exclude='output' /opt/at_yaris_tahmini/ $BACKUP_DIR/",
             "echo 'Backup created at '$BACKUP_DIR",
             
             f"cd {REMOTE_TMP_DIR} && tar -xzf {bundle_name}",
