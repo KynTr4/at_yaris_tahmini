@@ -18,12 +18,19 @@ UTC = timezone.utc
 
 
 def as_float(value):
-    if value is None or str(value).strip() in {"", "-"}:
+    if value is None:
         return None
-    try:
-        return float(str(value).replace("%", "").replace(",", ".").strip())
-    except ValueError:
+    val_str = str(value).strip()
+    if val_str in {"", "-"}:
         return None
+    val_str = val_str.replace("%", "")
+    match = re.match(r"^(\d+(?:[.,]\d+)?)", val_str)
+    if match:
+        try:
+            return float(match.group(1).replace(",", "."))
+        except ValueError:
+            return None
+    return None
 
 
 def normalize_name(value: object) -> str:
