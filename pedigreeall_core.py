@@ -223,3 +223,190 @@ class APIClient:
 
 def unwrap(payload):
     return payload.get("m_cData",payload) if isinstance(payload,dict) else payload
+
+
+class TjkResolverCache:
+    def __init__(self, conn):
+        self.conn = conn
+        self.tables = {}
+        self.program_entries = {}  # (horse_id, date) -> tjk_id
+        self.program_entries_hist = {}  # horse_id -> (tjk_id, program_date)
+        self.links = {}  # horse_id -> tjk_id
+        self.profiles_by_id = {}  # horse_id -> tjk_id
+        self.profiles_by_name = {}  # folded_name -> (tjk_id, name)
+        self.mapping = {}  # horse_id -> tjk_id
+        self.loaded = False
+
+    def load_all(self):
+        if self.loaded:
+            return
+        
+        # Check tables once
+        for t in ("race_program_entries", "horse_links", "horse_profiles", "horse_mapping"):
+            self.tables[t] = self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)
+            ).fetchone() is not None
+
+        # Preload program entries
+        if self.tables.get("race_program_entries"):
+            for r in self.conn.execute("SELECT horse_id, tjk_id, program_date FROM race_program_entries WHERE horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                h_id = r[0]
+                t_id = str(r[1])
+                dt = r[2]
+                self.program_entries[(h_id, dt)] = t_id
+                existing = self.program_entries_hist.get(h_id)
+                if not existing or dt > existing[1]:
+                    self.program_entries_hist[h_id] = (t_id, dt)
+
+        # Preload horse_links
+        if self.tables.get("horse_links"):
+            for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_links WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                self.links[r[0]] = str(r[1])
+
+        # Preload horse_profiles
+        if self.tables.get("horse_profiles"):
+            from race_scope import fold
+            for r in self.conn.execute("SELECT horse_id, tjk_id, name FROM horse_profiles WHERE tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                h_id = r[0]
+                t_id = str(r[1])
+                name = r[2]
+                if h_id is not None:
+                    self.profiles_by_id[h_id] = t_id
+                if name:
+                    self.profiles_by_name[fold(name)] = (t_id, name)
+
+        # Preload horse_mapping
+        if self.tables.get("horse_mapping"):
+            for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_mapping WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                self.mapping[r[0]] = str(r[1])
+
+        self.loaded = True
+
+
+_resolver_caches = {}
+
+
+def resolve_tjk_id(conn: sqlite3.Connection, horse_id: Any, horse_name: str | None = None, date: str | None = None) -> dict[str, Any]:
+    from race_scope import fold
+
+    global _resolver_caches
+    if len(_resolver_caches) > 100:
+        _resolver_caches.clear()
+
+    conn_id = id(conn)
+    if conn_id not in _resolver_caches:
+        _resolver_caches[conn_id] = TjkResolverCache(conn)
+    cache = _resolver_caches[conn_id]
+    cache.load_all()
+
+    # Normalize inputs
+    tjk_id_val = None
+    h_id = None
+
+    if isinstance(horse_id, str):
+        if horse_id.startswith("tjk:"):
+            val = horse_id.split(":", 1)[1].strip()
+            if val and val != "0" and val.lower() != "none":
+                tjk_id_val = val
+        elif horse_id.startswith("horse:"):
+            val = horse_id.split(":", 1)[1].strip()
+            if val and val != "0" and val.lower() != "none":
+                try:
+                    h_id = int(val)
+                except ValueError:
+                    h_id = val
+        else:
+            val = horse_id.strip()
+            if val and val != "0" and val.lower() != "none":
+                try:
+                    h_id = int(val)
+                except ValueError:
+                    h_id = val
+    elif isinstance(horse_id, int):
+        h_id = horse_id
+
+    if tjk_id_val:
+        return {
+            "tjk_id": tjk_id_val,
+            "source_table": "input_tjk_id",
+            "confidence": 1.0,
+            "reason": "Input was already a valid TJK ID key"
+        }
+
+    if h_id is None and not horse_name:
+        return {
+            "tjk_id": None,
+            "source_table": None,
+            "confidence": 0.0,
+            "reason": "No valid horse_id or horse_name provided"
+        }
+
+    # 1. race_program_entries.tjk_id match by horse_id
+    if h_id is not None and cache.tables.get("race_program_entries"):
+        if date and (h_id, date) in cache.program_entries:
+            return {
+                "tjk_id": cache.program_entries[(h_id, date)],
+                "source_table": "race_program_entries",
+                "confidence": 1.0,
+                "reason": f"Matched by horse_id and date={date}"
+            }
+        
+        if h_id in cache.program_entries_hist:
+            t_id, hist_date = cache.program_entries_hist[h_id]
+            return {
+                "tjk_id": t_id,
+                "source_table": "race_program_entries",
+                "confidence": 1.0,
+                "reason": f"Matched by horse_id (historical date {hist_date})"
+            }
+
+    # 2. horse_links (verified=1)
+    if h_id is not None and cache.tables.get("horse_links"):
+        if h_id in cache.links:
+            return {
+                "tjk_id": cache.links[h_id],
+                "source_table": "horse_links",
+                "confidence": 1.0,
+                "reason": "Matched by verified horse_links"
+            }
+
+    # 3. horse_profiles
+    if cache.tables.get("horse_profiles"):
+        if h_id is not None and h_id in cache.profiles_by_id:
+            return {
+                "tjk_id": cache.profiles_by_id[h_id],
+                "source_table": "horse_profiles",
+                "confidence": 1.0,
+                "reason": "Matched by horse_id in horse_profiles"
+            }
+
+        if horse_name:
+            folded_name = fold(horse_name)
+            if folded_name in cache.profiles_by_name:
+                t_id, db_name = cache.profiles_by_name[folded_name]
+                return {
+                    "tjk_id": t_id,
+                    "source_table": "horse_profiles",
+                    "confidence": 0.8,
+                    "reason": f"Matched by normalized name fallback (name={db_name})"
+                }
+
+    # 4. horse_mapping (verified=1)
+    if h_id is not None and cache.tables.get("horse_mapping"):
+        if h_id in cache.mapping:
+            return {
+                "tjk_id": cache.mapping[h_id],
+                "source_table": "horse_mapping",
+                "confidence": 1.0,
+                "reason": "Matched by verified legacy horse_mapping"
+            }
+
+    return {
+        "tjk_id": None,
+        "source_table": None,
+        "confidence": 0.0,
+        "reason": "No TJK ID found across all sources"
+    }
+
+
+

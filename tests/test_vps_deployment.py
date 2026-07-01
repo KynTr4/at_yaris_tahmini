@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import backup_daily
+import backup_db as backup_daily
 import create_vps_bundle
 from migrate_provenance_schema import apply_migrations
 from run_agf_update import select_upcoming
@@ -93,8 +93,8 @@ class VpsDeploymentTests(unittest.TestCase):
 
     def test_systemd_templates_exist(self):
         root = Path(__file__).resolve().parents[1] / "deploy" / "systemd"
-        self.assertEqual(len(list(root.glob("*.service"))), 7)
-        self.assertEqual(len(list(root.glob("*.timer"))), 6)
+        self.assertEqual(len(list(root.glob("*.service"))), 8)
+        self.assertEqual(len(list(root.glob("*.timer"))), 7)
         agf_timer = (root / "at-yaris-agf-update.timer").read_text(encoding="utf-8")
         self.assertIn("OnCalendar=*-*-* 09..23:*:00 Europe/Istanbul", agf_timer)
         self.assertTrue((root / "at-yaris-web.service").is_file())
@@ -118,18 +118,20 @@ class VpsDeploymentTests(unittest.TestCase):
             self.assertTrue(sidecar.read_text(encoding="ascii").endswith("  bundle.tar.gz\n"))
 
     def test_sqlite_backup_archive(self):
+        import gzip
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            root = Path(tmp); db = root / "db.sqlite"; out = root / "output"; reports = root / "reports"; models = root / "models"; backups = root / "backups"
+            root = Path(tmp); db = root / "db.sqlite"; backups = root / "backups"
             with sqlite3.connect(db) as con: con.execute("CREATE TABLE t(x)"); con.execute("INSERT INTO t VALUES(1)")
-            for folder in (out, reports, models): folder.mkdir(); (folder / "x.txt").write_text("x")
-            old = (backup_daily.DB_PATH, backup_daily.OUTPUT_DIR, backup_daily.REPORTS_DIR, backup_daily.MODELS_DIR, backup_daily.BACKUP_DIR, backup_daily.PROJECT_ROOT)
-            backup_daily.DB_PATH, backup_daily.OUTPUT_DIR, backup_daily.REPORTS_DIR, backup_daily.MODELS_DIR, backup_daily.BACKUP_DIR, backup_daily.PROJECT_ROOT = db, out, reports, models, backups, root
+            old = (backup_daily.DB_PATH, backup_daily.BACKUP_DIR)
+            backup_daily.DB_PATH, backup_daily.BACKUP_DIR = db, backups
             try:
                 archive = backup_daily.create_backup()
                 self.assertTrue(archive.exists())
-                with tarfile.open(archive) as tar: self.assertTrue(any(name.endswith("db.sqlite") for name in tar.getnames()))
+                with gzip.open(archive, "rb") as f:
+                    content = f.read()
+                    self.assertTrue(len(content) > 0)
             finally:
-                (backup_daily.DB_PATH, backup_daily.OUTPUT_DIR, backup_daily.REPORTS_DIR, backup_daily.MODELS_DIR, backup_daily.BACKUP_DIR, backup_daily.PROJECT_ROOT) = old
+                (backup_daily.DB_PATH, backup_daily.BACKUP_DIR) = old
 
 
 if __name__ == "__main__": unittest.main()

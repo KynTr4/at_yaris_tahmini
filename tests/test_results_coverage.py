@@ -63,7 +63,7 @@ class ResultsCoverageTests(unittest.TestCase):
         self.assertEqual(tracks["İzmir"]["missing_races"], 2)
         self.assertEqual(tracks["İzmir"]["tjk_id_missing_horse_count"], 1)
         self.assertEqual(tracks["İzmir"]["source_not_published_count"], 1)
-        self.assertIn("RESULT_MAPPING_PENDING", tracks["İzmir"]["missing_reason"])
+        self.assertIn("DATA_MISSING", tracks["İzmir"]["missing_reason"])
         self.assertEqual(tracks["Karma"]["missing_reason"], "SOURCE_UNSUPPORTED")
 
     def test_race_dashboard_statuses_are_distinct(self):
@@ -73,7 +73,7 @@ class ResultsCoverageTests(unittest.TestCase):
         races = {row["race_id"]: row for row in coverage["races"]}
         self.assertEqual(races["ist-1"]["status"], "Sonuç çekildi")
         self.assertEqual(races["izm-1"]["status"], "TJK ID eksik")
-        self.assertEqual(races["izm-2"]["status"], "Sonuç bekleniyor")
+        self.assertEqual(races["izm-2"]["status"], "Veri eksik")
         self.assertEqual(races["karma-1"]["status"], "Kaynak desteklenmiyor")
 
     def test_track_warnings_and_report_fields(self):

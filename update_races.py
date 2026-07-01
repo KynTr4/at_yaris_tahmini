@@ -6,7 +6,7 @@ import logging
 import asyncio
 from datetime import date, datetime
 import pandas as pd
-from pedigreeall_core import APIClient, connect, init_db, now
+from pedigreeall_core import APIClient, connect, init_db, now, resolve_tjk_id
 from normalize_data import normalize_entity
 
 # Setup logging
@@ -94,22 +94,19 @@ async def main():
     new_horses = []
     with connect(db_path) as db:
         for h in horses:
-            tjk_id = h["tjk_id"]
             horse_id = h["horse_id"]
             name = h["horse_name"]
+            
+            # Use unified resolver
+            res = resolve_tjk_id(db, horse_id if horse_id else f"tjk:{h['tjk_id']}", name, today_str)
+            tjk_id = res["tjk_id"]
             
             # Form entity key
             if horse_id:
                 entity = f"horse:{horse_id}"
             else:
-                entity = f"tjk:{tjk_id}"
+                entity = f"tjk:{tjk_id}" if tjk_id else f"tjk:{h['tjk_id']}"
                 
-            # If tjk_id is missing, look up horse_links
-            if not tjk_id and horse_id:
-                link = db.execute("SELECT tjk_id FROM horse_links WHERE horse_id=? AND verified=1", (horse_id,)).fetchone()
-                if link:
-                    tjk_id = link[0]
-                    
             # Check race count in DB
             race_count = db.execute("SELECT COUNT(*) FROM horse_races WHERE horse_key=?", (entity,)).fetchone()[0]
             

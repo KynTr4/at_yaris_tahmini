@@ -23,21 +23,13 @@ def track_policy(track: object) -> str:
 
 
 def resolved_tjk_id(connection: sqlite3.Connection, horse_id: str) -> str | None:
-    if horse_id.startswith("tjk:"):
-        value = horse_id.split(":", 1)[1].strip()
-        return value if value and value != "0" else None
-    if horse_id.startswith("horse:"):
-        value = horse_id.split(":", 1)[1]
-        row = connection.execute(
-            "SELECT tjk_id FROM horse_links WHERE CAST(horse_id AS TEXT)=? AND verified=1 LIMIT 1",
-            (value,),
-        ).fetchone()
-        if row and row[0] not in (None, "", 0, "0"):
-            return str(row[0])
-    return None
+    from pedigreeall_core import resolve_tjk_id
+    res = resolve_tjk_id(connection, horse_id)
+    return res["tjk_id"]
 
 
 def build_results_coverage(connection: sqlite3.Connection, target_date: str, country: str = "ALL") -> dict[str, Any]:
+    from pedigreeall_core import resolve_tjk_id
     connection.row_factory = sqlite3.Row
     programs = connection.execute(
         """WITH ranked AS (
@@ -70,31 +62,142 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
     }
 
     programs = [row for row in programs if track_in_country(row["track"], country)]
+    
+    # Check if errors table exists
+    errors_table_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='errors'"
+    ).fetchone() is not None
+
+    missing_horses = []
+    horse_reasons = {}
+    
+    for horse in programs:
+        r_id = horse["race_id"]
+        h_id = horse["horse_id"]
+        h_name = horse["horse_name"]
+        track_raw = horse["track"]
+        track_cleaned = clean_track(track_raw)
+        policy = track_policy(track_cleaned)
+        
+        # Resolve TJK ID
+        res = resolve_tjk_id(connection, h_id, h_name, target_date)
+        tjk_id = res["tjk_id"]
+        
+        captured = r_id in result_races
+        
+        if captured:
+            reason = "RESULT_CAPTURED"
+        elif policy == "unsupported":
+            reason = "SOURCE_UNSUPPORTED"
+        elif not tjk_id:
+            reason = "TJK_ID_MISSING"
+        else:
+            # Check for API/DB errors
+            err_row = None
+            if errors_table_exists:
+                err_row = connection.execute(
+                    """SELECT error_type, message FROM errors 
+                       WHERE (entity_key = ? OR entity_key = ?) AND date(created_at) = ?
+                       ORDER BY id DESC LIMIT 1""",
+                    (f"horse:{h_id}" if not str(h_id).startswith("horse:") and not str(h_id).startswith("tjk:") else str(h_id),
+                     f"tjk:{tjk_id}",
+                     target_date)
+                ).fetchone()
+                
+            if err_row:
+                err_type, err_msg = err_row[0], err_row[1]
+                if any(k in err_type.lower() or k in err_msg.lower() for k in ("sqlite", "write", "database", "normalization")):
+                    reason = "DB_WRITE_ERROR"
+                else:
+                    reason = "API_ERROR"
+            else:
+                entity_key = f"horse:{h_id}" if not str(h_id).startswith("horse:") and not str(h_id).startswith("tjk:") else str(h_id)
+                published = (entity_key in published_entities) or (f"tjk:{tjk_id}" in published_entities)
+                
+                if not published:
+                    reason = "PROVIDER_RESULT_NOT_PUBLISHED"
+                else:
+                    prog_count = connection.execute(
+                        "SELECT COUNT(DISTINCT race_id) FROM program_snapshots WHERE (horse_id = ? OR horse_id = ?) AND substr(race_start_at,1,10) = ?",
+                        (str(h_id), f"tjk:{tjk_id}", target_date)
+                    ).fetchone()[0]
+                    
+                    res_count = connection.execute(
+                        "SELECT COUNT(*) FROM horse_races WHERE horse_key IN (?, ?) AND race_date = ?",
+                        (entity_key, f"tjk:{tjk_id}", target_dot)
+                    ).fetchone()[0]
+                    
+                    if prog_count > 1 or res_count > 1:
+                        reason = "AMBIGUOUS_PROGRAM_MATCH"
+                    else:
+                        reason = "DATA_MISSING"
+                        
+        horse_reasons[(r_id, h_id)] = reason
+        
+        if not captured:
+            missing_horses.append({
+                "horse_name": h_name,
+                "horse_id": str(h_id),
+                "race_id": r_id,
+                "track": track_cleaned,
+                "race_no": horse["race_no"],
+                "missing_reason": reason,
+                "resolved_tjk_id": tjk_id,
+                "tjk_id_source": res["source_table"],
+                "resolver_reason": res["reason"]
+            })
+
     grouped: dict[str, list[sqlite3.Row]] = {}
     for row in programs:
         grouped.setdefault(row["race_id"], []).append(row)
+        
     race_rows = []
     for race_id, horses in grouped.items():
         raw_track = horses[0]["track"]
-        track = clean_track(raw_track); policy = track_policy(track)
+        track = clean_track(raw_track)
+        policy = track_policy(track)
         fetched = race_id in result_races
-        missing_tjk = 0; source_not_published = 0
+        missing_tjk = 0
+        source_not_published = 0
+        
+        race_horse_reasons = []
         for horse in horses:
-            tjk_id = resolved_tjk_id(connection, str(horse["horse_id"]))
-            if not tjk_id:
+            reason = horse_reasons.get((race_id, horse["horse_id"]), "DATA_MISSING")
+            race_horse_reasons.append(reason)
+            if reason == "TJK_ID_MISSING":
                 missing_tjk += 1
-            elif str(horse["horse_id"]) not in published_entities:
+            elif reason == "PROVIDER_RESULT_NOT_PUBLISHED":
                 source_not_published += 1
+                
         if fetched:
-            reason, status = "NONE", "Sonuç çekildi"
-        elif policy == "unsupported":
-            reason, status = "SOURCE_UNSUPPORTED", "Kaynak desteklenmiyor"
-        elif missing_tjk:
-            reason, status = "TJK_ID_MISSING", "TJK ID eksik"
-        elif source_not_published:
-            reason, status = "RESULT_NOT_PUBLISHED", "Sonuç bekleniyor"
+            reason, status = "RESULT_CAPTURED", "Sonuç çekildi"
         else:
-            reason, status = "RESULT_MAPPING_PENDING", "Sonuç bekleniyor"
+            non_captured_reasons = sorted({r for r in race_horse_reasons if r != "RESULT_CAPTURED"})
+            if not non_captured_reasons:
+                reason = "DATA_MISSING"
+            else:
+                reason = ",".join(non_captured_reasons)
+                
+            status_map = {
+                "TJK_ID_MISSING": "TJK ID eksik",
+                "SOURCE_UNSUPPORTED": "Kaynak desteklenmiyor",
+                "PROVIDER_RESULT_NOT_PUBLISHED": "Sonuç bekleniyor (Yayınlanmadı)",
+                "AMBIGUOUS_PROGRAM_MATCH": "Program eşleşme karmaşası",
+                "DATA_MISSING": "Veri eksik",
+                "API_ERROR": "API hatası",
+                "DB_WRITE_ERROR": "Veritabanı yazma hatası",
+            }
+            priority_order = [
+                "SOURCE_UNSUPPORTED", "TJK_ID_MISSING", "DB_WRITE_ERROR",
+                "API_ERROR", "AMBIGUOUS_PROGRAM_MATCH", "PROVIDER_RESULT_NOT_PUBLISHED", "DATA_MISSING"
+            ]
+            status_reason = "DATA_MISSING"
+            for p in priority_order:
+                if p in non_captured_reasons:
+                    status_reason = p
+                    break
+            status = status_map.get(status_reason, "Sonuç bekleniyor")
+
         race_rows.append({
             "race_id": race_id, "track": track, "track_policy": policy,
             "race_no": horses[0]["race_no"], "race_start_at": horses[0]["race_start_at"],
@@ -117,13 +220,21 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
         row["missing_races"] += int(not race["result_fetched"])
         row["tjk_id_missing_horse_count"] += race["tjk_id_missing_horse_count"]
         row["source_not_published_count"] += race["source_not_published_count"]
+        
     for track, row in tracks.items():
-        reasons = sorted({r["missing_reason"] for r in race_rows if r["track"] == track and not r["result_fetched"]})
-        row["missing_reason"] = ",".join(reasons) if reasons else "NONE"
+        reasons = set()
+        for r in race_rows:
+            if r["track"] == track and not r["result_fetched"]:
+                for sub_reason in r["missing_reason"].split(","):
+                    if sub_reason and sub_reason != "RESULT_CAPTURED":
+                        reasons.add(sub_reason)
+        row["missing_reason"] = ",".join(sorted(reasons)) if reasons else "NONE"
+        
     return {
         "date": target_date, "generated_at": datetime.now(timezone.utc).isoformat(),
         "tracks": sorted(tracks.values(), key=lambda row: (row["track_policy"] != "mandatory", row["track"])),
         "races": race_rows,
+        "missing_horses": missing_horses,
     }
 
 
@@ -172,7 +283,29 @@ def write_results_coverage(
     lines += ["", "## Missing race detail", "", "```json", json.dumps(
         [row for row in coverage["races"] if not row["result_fetched"]], ensure_ascii=False, indent=2
     ), "```", ""]
+    
+    lines += ["", "## Missing horses detail", "",
+              "| Horse Name | Horse ID | Race ID | Track | Race No | Missing Reason | Resolved TJK ID | TJK ID Source | Resolver Reason |",
+              "| --- | --- | --- | --- | ---: | --- | --- | --- | --- |"]
+    for h in coverage.get("missing_horses", []):
+        lines.append(
+            f"| {h['horse_name']} | {h['horse_id']} | {h['race_id']} | {h['track']} | {h['race_no']} | "
+            f"{h['missing_reason']} | {h['resolved_tjk_id'] or ''} | {h['tjk_id_source'] or ''} | {h['resolver_reason'] or ''} |"
+        )
+        
     report_text = "\n".join(lines)
     (reports / "results_coverage_latest.md").write_text(report_text, encoding="utf-8")
     (reports / f"results_coverage_{target_date}.md").write_text(report_text, encoding="utf-8")
     return coverage
+
+
+if __name__ == "__main__":
+    import argparse
+    from app_config import DB_PATH, OUTPUT_DIR, REPORTS_DIR
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", help="Date in YYYY-MM-DD format", required=True)
+    args = parser.parse_args()
+    
+    write_results_coverage(DB_PATH, args.date, OUTPUT_DIR, REPORTS_DIR)
+    print(f"Generated results coverage for {args.date}")
+

@@ -8,7 +8,7 @@ import asyncio
 from datetime import date, datetime, timedelta
 import pandas as pd
 from app_config import DB_PATH, LOG_DIR, OUTPUT_DIR, REPORTS_DIR, ensure_runtime_dirs
-from pedigreeall_core import APIClient, connect, init_db, now
+from pedigreeall_core import APIClient, connect, init_db, now, resolve_tjk_id
 from normalize_data import normalize_entity
 from snapshot_store import append_normalized_result
 from results_coverage import clean_track, coverage_warnings, track_policy, write_results_coverage
@@ -139,26 +139,29 @@ async def update_date(target_date: date, country: str = "ALL", tracks: list[str]
     missing_results = []
     with connect(db_path) as db:
         for h in horses:
-            tjk_id = h["tjk_id"]
             horse_id = h["horse_id"]
             name = h["horse_name"]
             track = clean_track(h.get("city_name"))
+            
+            # Use unified resolver
+            res = resolve_tjk_id(db, horse_id if horse_id else f"tjk:{h['tjk_id']}", name, today_str)
+            tjk_id = res["tjk_id"]
             
             # Form entity key
             if horse_id:
                 entity = f"horse:{horse_id}"
             else:
-                entity = f"tjk:{tjk_id}"
+                entity = f"tjk:{tjk_id}" if tjk_id else f"tjk:{h['tjk_id']}"
                 
-            # If tjk_id is missing, look up horse_links
-            if not tjk_id and horse_id:
-                link = db.execute("SELECT tjk_id FROM horse_links WHERE horse_id=? AND verified=1", (horse_id,)).fetchone()
-                if link:
-                    tjk_id = link[0]
-                    
             if isolated_result_exists(db, entity, today_str):
                 continue
-                
+            
+            # Log resolver result for each missing record
+            logger.info(
+                "RESOLVER_RESULT horse_name=%s horse_id=%s resolved_tjk_id=%s source_table=%s reason=%s",
+                name, horse_id, tjk_id, res["source_table"], res["reason"]
+            )
+            
             missing_results.append((entity, tjk_id, horse_id, name, track))
             
     logger.info(f"{len(horses) - len(missing_results)} results already exist in DB. {len(missing_results)} results are missing and will be requested.")
