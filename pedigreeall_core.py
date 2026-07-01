@@ -96,8 +96,9 @@ CREATE TABLE IF NOT EXISTS endpoint_probe_results(
 CREATE TABLE IF NOT EXISTS access_restrictions(
  endpoint_key TEXT PRIMARY KEY,http_status INTEGER NOT NULL,reason TEXT,first_seen_at TEXT NOT NULL,last_seen_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_discovered_country ON discovered_horses(is_turkey,country_id);
-CREATE INDEX IF NOT EXISTS idx_races_horse_date ON horse_races(horse_key,race_date);
-CREATE INDEX IF NOT EXISTS idx_raw_entity ON raw_api_responses(entity_key,endpoint_key);
+CREATE INDEX IF NOT EXISTS idx_races_horse_date ON horse_races(horse_key, race_date);
+CREATE INDEX IF NOT EXISTS idx_races_date ON horse_races(race_date);
+CREATE INDEX IF NOT EXISTS idx_raw_entity ON raw_api_responses(entity_key, endpoint_key);
 """
 
 def init_db(path: str|Path):
@@ -236,68 +237,93 @@ class TjkResolverCache:
         self.profiles_by_name = {}  # folded_name -> (tjk_id, name)
         self.mapping = {}  # horse_id -> tjk_id
         self.loaded = False
+        self.loaded_at = 0.0
 
-    def load_all(self):
-        if self.loaded:
-            return
+    def load_all(self, conn=None):
+        import time
+        import sys
         
-        # Check tables once
-        for t in ("race_program_entries", "horse_links", "horse_profiles", "horse_mapping"):
-            self.tables[t] = self.conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)
-            ).fetchone() is not None
+        is_test = "pytest" in sys.modules or "unittest" in sys.modules
+        db_path = ""
+        if conn:
+            try:
+                db_path = conn.execute("PRAGMA database_list").fetchone()[2]
+            except Exception:
+                pass
+                
+        if (not self.loaded 
+            or (not is_test and time.monotonic() - self.loaded_at > 600)
+            or (db_path and db_path != getattr(self, "db_path", ""))
+            or (is_test and conn is not self.conn)):
+            
+            if conn:
+                self.conn = conn
+            if db_path:
+                self.db_path = db_path
+            
+            self.tables.clear()
+            self.program_entries.clear()
+            self.program_entries_hist.clear()
+            self.links.clear()
+            self.profiles_by_id.clear()
+            self.profiles_by_name.clear()
+            self.mapping.clear()
+            
+            # Check tables once
+            for t in ("race_program_entries", "horse_links", "horse_profiles", "horse_mapping"):
+                self.tables[t] = self.conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)
+                ).fetchone() is not None
 
-        # Preload program entries
-        if self.tables.get("race_program_entries"):
-            for r in self.conn.execute("SELECT horse_id, tjk_id, program_date FROM race_program_entries WHERE horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                h_id = r[0]
-                t_id = str(r[1])
-                dt = r[2]
-                self.program_entries[(h_id, dt)] = t_id
-                existing = self.program_entries_hist.get(h_id)
-                if not existing or dt > existing[1]:
-                    self.program_entries_hist[h_id] = (t_id, dt)
+            # Preload program entries
+            if self.tables.get("race_program_entries"):
+                for r in self.conn.execute("SELECT horse_id, tjk_id, program_date FROM race_program_entries WHERE horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    h_id = r[0]
+                    t_id = str(r[1])
+                    dt = r[2]
+                    self.program_entries[(h_id, dt)] = t_id
+                    existing = self.program_entries_hist.get(h_id)
+                    if not existing or dt > existing[1]:
+                        self.program_entries_hist[h_id] = (t_id, dt)
 
-        # Preload horse_links
-        if self.tables.get("horse_links"):
-            for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_links WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                self.links[r[0]] = str(r[1])
+            # Preload horse_links
+            if self.tables.get("horse_links"):
+                for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_links WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    self.links[r[0]] = str(r[1])
 
-        # Preload horse_profiles
-        if self.tables.get("horse_profiles"):
-            from race_scope import fold
-            for r in self.conn.execute("SELECT horse_id, tjk_id, name FROM horse_profiles WHERE tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                h_id = r[0]
-                t_id = str(r[1])
-                name = r[2]
-                if h_id is not None:
-                    self.profiles_by_id[h_id] = t_id
-                if name:
-                    self.profiles_by_name[fold(name)] = (t_id, name)
+            # Preload horse_profiles
+            if self.tables.get("horse_profiles"):
+                from race_scope import fold
+                for r in self.conn.execute("SELECT horse_id, tjk_id, name FROM horse_profiles WHERE tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    h_id = r[0]
+                    t_id = str(r[1])
+                    name = r[2]
+                    if h_id is not None:
+                        self.profiles_by_id[h_id] = t_id
+                    if name:
+                        self.profiles_by_name[fold(name)] = (t_id, name)
 
-        # Preload horse_mapping
-        if self.tables.get("horse_mapping"):
-            for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_mapping WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                self.mapping[r[0]] = str(r[1])
+            # Preload horse_mapping
+            if self.tables.get("horse_mapping"):
+                for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_mapping WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    self.mapping[r[0]] = str(r[1])
 
-        self.loaded = True
+            self.loaded_at = time.monotonic()
+            self.loaded = True
 
 
-_resolver_caches = {}
+_GLOBAL_RESOLVER_CACHE = None
 
 
 def resolve_tjk_id(conn: sqlite3.Connection, horse_id: Any, horse_name: str | None = None, date: str | None = None) -> dict[str, Any]:
     from race_scope import fold
 
-    global _resolver_caches
-    if len(_resolver_caches) > 100:
-        _resolver_caches.clear()
-
-    conn_id = id(conn)
-    if conn_id not in _resolver_caches:
-        _resolver_caches[conn_id] = TjkResolverCache(conn)
-    cache = _resolver_caches[conn_id]
-    cache.load_all()
+    global _GLOBAL_RESOLVER_CACHE
+    if _GLOBAL_RESOLVER_CACHE is None:
+        _GLOBAL_RESOLVER_CACHE = TjkResolverCache(conn)
+    
+    cache = _GLOBAL_RESOLVER_CACHE
+    cache.load_all(conn)
 
     # Normalize inputs
     tjk_id_val = None

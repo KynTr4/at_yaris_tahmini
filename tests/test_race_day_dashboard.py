@@ -99,7 +99,7 @@ class RaceDayDashboardTests(unittest.TestCase):
         self.assertEqual(by_track["Karma"]["result_status"], "Kaynak desteklenmiyor")
         self.assertEqual(by_track["Woodbine"]["result_status"], "Kaynak desteklenmiyor")
         summary = self.get("/api/race-day/summary?date=2026-06-28")
-        self.assertTrue(any("track=İzmir" in warning for warning in summary["warnings"]))
+        self.assertTrue(any("İzmir" in warning for warning in summary["warnings"]))
 
     def test_prediction_waiting_and_completed_result_statuses(self):
         races = self.get("/api/race-day/races?date=2026-06-28")["races"]

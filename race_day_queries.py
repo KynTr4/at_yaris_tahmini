@@ -172,10 +172,27 @@ def race_day_view(connection: sqlite3.Connection, target_date: str, country: str
                 not row["result_fetched"] and row["track_policy"] == "unsupported" for row in selected
             ),
         })
-    warnings = [
-        f"mandatory_track_missing: track={row['track']} missing_result_races={row['missing_result_races']} reason={row['missing_reason']}"
-        for row in track_rows if row["track_policy"] == "mandatory" and row["missing_result_races"]
-    ]
+    status_map = {
+        "TJK_ID_MISSING": "TJK ID eksik",
+        "SOURCE_UNSUPPORTED": "Desteklenmeyen kaynak",
+        "PROVIDER_RESULT_NOT_PUBLISHED": "Sonuç bekleniyor (Yayınlanmadı)",
+        "AMBIGUOUS_PROGRAM_MATCH": "Program eşleşme karmaşası",
+        "DATA_MISSING": "Veri eksik",
+        "API_ERROR": "API hatası",
+        "DB_WRITE_ERROR": "Veritabanı yazma hatası",
+    }
+    warnings = []
+    for row in track_rows:
+        if row["track_policy"] == "mandatory" and row["missing_result_races"]:
+            reasons = []
+            for r in row["missing_reason"].split(","):
+                if r and r != "RESULT_CAPTURED":
+                    reasons.append(status_map.get(r, r))
+            reason_str = ", ".join(reasons) if reasons else "Veri eksik"
+            warnings.append(
+                f"{row['track']} pistinde eksik sonuç var ({row['missing_result_races']} yarış). "
+                f"Durum: {reason_str}"
+            )
     return {"date": target_date, "tracks": track_rows, "races": races, "warnings": warnings}
 
 

@@ -68,6 +68,48 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='errors'"
     ).fetchone() is not None
 
+    # 1. Resolve TJK IDs for all horses first and map each horse_id to its resolved TJK info
+    resolved_tjk_by_horse = {}
+    for horse in programs:
+        h_id = horse["horse_id"]
+        h_name = horse["horse_name"]
+        resolved_tjk_by_horse[h_id] = resolve_tjk_id(connection, h_id, h_name, target_date)
+
+    # 2. Bulk load all errors for target_date to avoid querying in a loop
+    errors_by_entity = {}
+    if errors_table_exists:
+        err_rows = connection.execute(
+            """SELECT entity_key, error_type, message FROM errors 
+               WHERE date(created_at) = ? 
+               ORDER BY id ASC""",
+            (target_date,)
+        ).fetchall()
+        for row in err_rows:
+            errors_by_entity[row["entity_key"]] = (row["error_type"], row["message"])
+
+    # 3. Precalculate program distinct race counts in Python
+    # Map horse key -> set of race_ids
+    horse_races_map = {}
+    for horse in programs:
+        r_id = horse["race_id"]
+        curr_h_id = str(horse["horse_id"])
+        curr_tjk_id = resolved_tjk_by_horse[horse["horse_id"]]["tjk_id"]
+        
+        horse_races_map.setdefault(curr_h_id, set()).add(r_id)
+        if curr_tjk_id:
+            horse_races_map.setdefault(f"tjk:{curr_tjk_id}", set()).add(r_id)
+
+    # 4. Bulk load run counts from horse_races table
+    races_by_horse = {}
+    race_rows = connection.execute(
+        """SELECT horse_key, COUNT(*) as cnt FROM horse_races 
+           WHERE race_date = ? 
+           GROUP BY horse_key""",
+        (target_dot,)
+    ).fetchall()
+    for row in race_rows:
+        races_by_horse[row["horse_key"]] = row["cnt"]
+
     missing_horses = []
     horse_reasons = {}
     
@@ -79,8 +121,8 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
         track_cleaned = clean_track(track_raw)
         policy = track_policy(track_cleaned)
         
-        # Resolve TJK ID
-        res = resolve_tjk_id(connection, h_id, h_name, target_date)
+        # Resolve TJK ID from precalculated map
+        res = resolved_tjk_by_horse[h_id]
         tjk_id = res["tjk_id"]
         
         captured = r_id in result_races
@@ -92,17 +134,15 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
         elif not tjk_id:
             reason = "TJK_ID_MISSING"
         else:
-            # Check for API/DB errors
+            # Check for API/DB errors using precalculated map
             err_row = None
-            if errors_table_exists:
-                err_row = connection.execute(
-                    """SELECT error_type, message FROM errors 
-                       WHERE (entity_key = ? OR entity_key = ?) AND date(created_at) = ?
-                       ORDER BY id DESC LIMIT 1""",
-                    (f"horse:{h_id}" if not str(h_id).startswith("horse:") and not str(h_id).startswith("tjk:") else str(h_id),
-                     f"tjk:{tjk_id}",
-                     target_date)
-                ).fetchone()
+            entity_key_1 = f"horse:{h_id}" if not str(h_id).startswith("horse:") and not str(h_id).startswith("tjk:") else str(h_id)
+            entity_key_2 = f"tjk:{tjk_id}"
+            
+            if entity_key_1 in errors_by_entity:
+                err_row = errors_by_entity[entity_key_1]
+            elif entity_key_2 in errors_by_entity:
+                err_row = errors_by_entity[entity_key_2]
                 
             if err_row:
                 err_type, err_msg = err_row[0], err_row[1]
@@ -111,21 +151,22 @@ def build_results_coverage(connection: sqlite3.Connection, target_date: str, cou
                 else:
                     reason = "API_ERROR"
             else:
-                entity_key = f"horse:{h_id}" if not str(h_id).startswith("horse:") and not str(h_id).startswith("tjk:") else str(h_id)
-                published = (entity_key in published_entities) or (f"tjk:{tjk_id}" in published_entities)
+                entity_key = entity_key_1
+                published = (entity_key in published_entities) or (entity_key_2 in published_entities)
                 
                 if not published:
                     reason = "PROVIDER_RESULT_NOT_PUBLISHED"
                 else:
-                    prog_count = connection.execute(
-                        "SELECT COUNT(DISTINCT race_id) FROM program_snapshots WHERE (horse_id = ? OR horse_id = ?) AND substr(race_start_at,1,10) = ?",
-                        (str(h_id), f"tjk:{tjk_id}", target_date)
-                    ).fetchone()[0]
+                    # prog_count from in-memory set
+                    prog_count_set = set()
+                    if entity_key in horse_races_map:
+                        prog_count_set.update(horse_races_map[entity_key])
+                    if entity_key_2 in horse_races_map:
+                        prog_count_set.update(horse_races_map[entity_key_2])
+                    prog_count = len(prog_count_set)
                     
-                    res_count = connection.execute(
-                        "SELECT COUNT(*) FROM horse_races WHERE horse_key IN (?, ?) AND race_date = ?",
-                        (entity_key, f"tjk:{tjk_id}", target_dot)
-                    ).fetchone()[0]
+                    # res_count from precalculated map
+                    res_count = races_by_horse.get(entity_key, 0) + (races_by_horse.get(entity_key_2, 0) if entity_key_2 != entity_key else 0)
                     
                     if prog_count > 1 or res_count > 1:
                         reason = "AMBIGUOUS_PROGRAM_MATCH"
