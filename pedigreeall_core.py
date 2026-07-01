@@ -228,7 +228,6 @@ def unwrap(payload):
 
 class TjkResolverCache:
     def __init__(self, conn):
-        self.conn = conn
         self.tables = {}
         self.program_entries = {}  # (horse_id, date) -> tjk_id
         self.program_entries_hist = {}  # horse_id -> (tjk_id, program_date)
@@ -239,7 +238,7 @@ class TjkResolverCache:
         self.loaded = False
         self.loaded_at = 0.0
 
-    def load_all(self, conn=None):
+    def load_all(self, conn):
         import time
         import sys
         
@@ -254,59 +253,69 @@ class TjkResolverCache:
         if (not self.loaded 
             or (not is_test and time.monotonic() - self.loaded_at > 600)
             or (db_path and db_path != getattr(self, "db_path", ""))
-            or (is_test and conn is not self.conn)):
+            or (is_test and id(conn) != getattr(self, "last_conn_id", 0))):
             
-            if conn:
-                self.conn = conn
             if db_path:
                 self.db_path = db_path
+            if conn:
+                self.last_conn_id = id(conn)
             
-            self.tables.clear()
-            self.program_entries.clear()
-            self.program_entries_hist.clear()
-            self.links.clear()
-            self.profiles_by_id.clear()
-            self.profiles_by_name.clear()
-            self.mapping.clear()
+            # Thread-safe local dictionary variables
+            tables = {}
+            program_entries = {}
+            program_entries_hist = {}
+            links = {}
+            profiles_by_id = {}
+            profiles_by_name = {}
+            mapping = {}
             
             # Check tables once
             for t in ("race_program_entries", "horse_links", "horse_profiles", "horse_mapping"):
-                self.tables[t] = self.conn.execute(
+                tables[t] = conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)
                 ).fetchone() is not None
 
             # Preload program entries
-            if self.tables.get("race_program_entries"):
-                for r in self.conn.execute("SELECT horse_id, tjk_id, program_date FROM race_program_entries WHERE horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+            if tables.get("race_program_entries"):
+                for r in conn.execute("SELECT horse_id, tjk_id, program_date FROM race_program_entries WHERE horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
                     h_id = r[0]
                     t_id = str(r[1])
                     dt = r[2]
-                    self.program_entries[(h_id, dt)] = t_id
-                    existing = self.program_entries_hist.get(h_id)
+                    program_entries[(h_id, dt)] = t_id
+                    existing = program_entries_hist.get(h_id)
                     if not existing or dt > existing[1]:
-                        self.program_entries_hist[h_id] = (t_id, dt)
+                        program_entries_hist[h_id] = (t_id, dt)
 
             # Preload horse_links
-            if self.tables.get("horse_links"):
-                for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_links WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                    self.links[r[0]] = str(r[1])
+            if tables.get("horse_links"):
+                for r in conn.execute("SELECT horse_id, tjk_id FROM horse_links WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    links[r[0]] = str(r[1])
 
             # Preload horse_profiles
-            if self.tables.get("horse_profiles"):
+            if tables.get("horse_profiles"):
                 from race_scope import fold
-                for r in self.conn.execute("SELECT horse_id, tjk_id, name FROM horse_profiles WHERE tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                for r in conn.execute("SELECT horse_id, tjk_id, name FROM horse_profiles WHERE tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
                     h_id = r[0]
                     t_id = str(r[1])
                     name = r[2]
                     if h_id is not None:
-                        self.profiles_by_id[h_id] = t_id
+                        profiles_by_id[h_id] = t_id
                     if name:
-                        self.profiles_by_name[fold(name)] = (t_id, name)
+                        profiles_by_name[fold(name)] = (t_id, name)
 
             # Preload horse_mapping
-            if self.tables.get("horse_mapping"):
-                for r in self.conn.execute("SELECT horse_id, tjk_id FROM horse_mapping WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
-                    self.mapping[r[0]] = str(r[1])
+            if tables.get("horse_mapping"):
+                for r in conn.execute("SELECT horse_id, tjk_id FROM horse_mapping WHERE verified = 1 AND horse_id IS NOT NULL AND tjk_id IS NOT NULL AND tjk_id != '' AND tjk_id != '0'"):
+                    mapping[r[0]] = str(r[1])
+
+            # Atomic assignment ensures concurrency safety for readers
+            self.tables = tables
+            self.program_entries = program_entries
+            self.program_entries_hist = program_entries_hist
+            self.links = links
+            self.profiles_by_id = profiles_by_id
+            self.profiles_by_name = profiles_by_name
+            self.mapping = mapping
 
             self.loaded_at = time.monotonic()
             self.loaded = True
