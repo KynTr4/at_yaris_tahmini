@@ -118,7 +118,11 @@ class DiagnosticsDashboardTests(unittest.TestCase):
 
     def test_shap_unavailable_auth_and_read_only(self):
         self.assertEqual(self.client.get("/diagnostics").status_code, 401)
-        self.assertIn("Model Diagnostics", self.get("/diagnostics").text)
+        page = self.get("/diagnostics").text
+        self.assertIn("Model Diagnostics", page)
+        for model in ("Ensemble", "Logistic", "CatBoost", "XGBoost"):
+            self.assertIn(f'value="{model}"', page)
+        self.assertIn('role="radiogroup"', page)
         shap = self.get("/api/diagnostics/feature-contribution").json()
         self.assertFalse(shap["available"])
         self.assertEqual(self.client.get("/api/diagnostics/summary?model=Unknown", headers=self.auth).status_code, 400)
