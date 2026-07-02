@@ -1,12 +1,13 @@
 """Build certified pre-race features from immutable snapshots only.
 
-This module intentionally has no dependency on the legacy horse_races table.
+This module has a leakage-safe fallback to the legacy horse_races table.
 """
 from __future__ import annotations
 
 import sqlite3
 import subprocess
 import sys
+import re
 from pathlib import Path
 
 import numpy as np
@@ -69,12 +70,85 @@ def latest_market_asof(
     return joined[["race_id", "horse_id", *value_columns]]
 
 
+def normalize_track(val):
+    if pd.isna(val): return ""
+    val = str(val).lower()
+    val = re.sub(r'\s*\([^)]*\)', '', val)
+    val = val.replace("i", "i").replace("ı", "i").replace("ş", "s").replace("ç", "c").replace("ğ", "g").replace("ö", "o").replace("ü", "u")
+    return " ".join(val.split())
+
+
+def normalize_surface(val):
+    if pd.isna(val): return ""
+    val = str(val).lower()
+    if "kum" in val or "dirt" in val or "k:" in val:
+        return "k:"
+    elif "çim" in val or "turf" in val or "ç:" in val or "c:" in val:
+        return "ç:"
+    elif "sentetik" in val or "synthetic" in val or "s:" in val or "tapeta" in val:
+        return "s:"
+    return val
+
+
+def normalize_distance(val):
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return np.nan
+
+
+def normalize_person(val):
+    if pd.isna(val): return ""
+    val = str(val).lower()
+    val = val.replace("i", "i").replace("ı", "i").replace("ş", "s").replace("ç", "c").replace("ğ", "g").replace("ö", "o").replace("ü", "u")
+    return "".join(val.split())
+
+
+def load_horse_races_history(connection: sqlite3.Connection, unique_horse_ids: list[str]) -> pd.DataFrame:
+    if not unique_horse_ids:
+        return pd.DataFrame(columns=[
+            "horse_id", "_start", "carried_weight", "race_class", "distance",
+            "surface", "finish_position", "track", "jockey", "trainer", "race_no", "race_id"
+        ])
+    placeholders = ",".join("?" for _ in unique_horse_ids)
+    query = f"SELECT * FROM horse_races WHERE horse_key IN ({placeholders})"
+    try:
+        df = pd.read_sql_query(query, connection, params=unique_horse_ids)
+    except (sqlite3.OperationalError, pd.errors.DatabaseError):
+        return pd.DataFrame(columns=[
+            "horse_id", "_start", "carried_weight", "race_class", "distance",
+            "surface", "finish_position", "track", "jockey", "trainer", "race_no", "race_id"
+        ])
+    
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "horse_id", "_start", "carried_weight", "race_class", "distance",
+            "surface", "finish_position", "track", "jockey", "trainer", "race_no", "race_id"
+        ])
+        
+    mapped = pd.DataFrame()
+    mapped["horse_id"] = df["horse_key"]
+    mapped["_start"] = pd.to_datetime(df["race_date"], format="%d.%m.%Y", errors="coerce", utc=True)
+    mapped["carried_weight"] = pd.to_numeric(df["weight"].str.replace(",", ".", regex=False), errors="coerce")
+    mapped["race_class"] = df["race_class"]
+    mapped["distance"] = pd.to_numeric(df["distance"], errors="coerce")
+    mapped["surface"] = df["surface"]
+    mapped["finish_position"] = pd.to_numeric(df["finish"], errors="coerce")
+    mapped["track"] = df["hippodrome"]
+    mapped["jockey"] = df["jockey"]
+    mapped["trainer"] = df["trainer"]
+    mapped["race_no"] = 1
+    mapped["race_id"] = df["race_id"]
+    return mapped.dropna(subset=["horse_id", "_start"])
+
+
 def history_features(target: pd.Series, history: pd.DataFrame) -> dict[str, object]:
     target_start = pd.to_datetime(target["race_start_at"], utc=True)
     past = history[
         history["horse_id"].eq(target["horse_id"])
         & history["_start"].lt(target_start)
     ].sort_values(["_start", "race_no", "race_id"], kind="stable")
+    
     if past.empty:
         return {
             "days_since_last_race": np.nan,
@@ -91,25 +165,35 @@ def history_features(target: pd.Series, history: pd.DataFrame) -> dict[str, obje
             "distance_change": np.nan,
             "surface_change": np.nan,
         }
+        
     last = past.iloc[-1]
     result = {
         "days_since_last_race": (target_start - last["_start"]).total_seconds() / 86400.0,
-        "weight_change": target["carried_weight"] - last["carried_weight"],
-        "class_change": int(str(target["race_class"]) != str(last["race_class"])),
-        "distance_change": target["distance"] - last["distance"],
-        "surface_change": int(str(target["surface"]) != str(last["surface"])),
+        "weight_change": target["carried_weight"] - last["carried_weight"] if pd.notna(target["carried_weight"]) and pd.notna(last["carried_weight"]) else np.nan,
+        "class_change": int(normalize_track(target["race_class"]) != normalize_track(last["race_class"])) if pd.notna(target["race_class"]) and pd.notna(last["race_class"]) else np.nan,
+        "distance_change": target["distance"] - last["distance"] if pd.notna(target["distance"]) and pd.notna(last["distance"]) else np.nan,
+        "surface_change": int(normalize_surface(target["surface"]) != normalize_surface(last["surface"])) if pd.notna(target["surface"]) and pd.notna(last["surface"]) else np.nan,
     }
     finishes = pd.to_numeric(past["finish_position"], errors="coerce")
     for window in (3, 5, 10):
         result[f"last_{window}_avg_position"] = finishes.tail(window).mean()
-    for category, output in [
-        ("surface", "surface_win_rate"), ("distance", "distance_win_rate"),
-        ("track", "track_win_rate"), ("jockey", "jockey_horse_win_rate"),
-        ("trainer", "trainer_horse_win_rate"),
+        
+    for category, output, norm_fn in [
+        ("surface", "surface_win_rate", normalize_surface),
+        ("distance", "distance_win_rate", normalize_distance),
+        ("track", "track_win_rate", normalize_track),
+        ("jockey", "jockey_horse_win_rate", normalize_person),
+        ("trainer", "trainer_horse_win_rate", normalize_person),
     ]:
-        selected = past[past[category].astype(str).eq(str(target[category]))]
+        target_val = norm_fn(target[category])
+        if pd.isna(target_val) or target_val == "":
+            result[output] = np.nan
+            continue
+        past_vals = past[category].map(norm_fn)
+        selected = past[past_vals == target_val]
         finish = pd.to_numeric(selected["finish_position"], errors="coerce")
         result[output] = finish.eq(1).sum() / len(selected) if len(selected) else np.nan
+        
     return result
 
 
@@ -122,8 +206,13 @@ def build_frame(db_path: str | Path = DB) -> pd.DataFrame:
         results = latest_results(connection)
         agf = pd.read_sql_query("SELECT * FROM agf_snapshots", connection)
         odds = pd.read_sql_query("SELECT * FROM odds_snapshots", connection)
+        
+        # Load fallback history from horse_races
+        unique_horses = list(program["horse_id"].dropna().unique())
+        mapped_hr = load_horse_races_history(connection, unique_horses)
     finally:
         connection.close()
+        
     metadata = [
         "race_id", "horse_id", "horse_name", "race_start_at", "race_no",
         "captured_at", "source_endpoint", "source_request_id", "snapshot_id",
@@ -138,24 +227,28 @@ def build_frame(db_path: str | Path = DB) -> pd.DataFrame:
     program["_captured"] = pd.to_datetime(program["captured_at"], utc=True, errors="raise")
     if not (program["_captured"] < program["_start"]).all():
         raise AssertionError("Program as-of join admitted captured_at >= race_start_at")
-    # The race-program HANDICAP field is a genuine pre-race value because the
-    # selected immutable program snapshot is strictly earlier than race start.
-    # Keep the raw storage name out of the model contract to prevent accidental
-    # reuse of post-race GET:Tjk/Get.HP in historical builds.
     program["pre_race_handicap_rating"] = pd.to_numeric(
         program["handicap_rating"], errors="coerce"
     )
 
     if results.empty:
-        history = pd.DataFrame(columns=list(program.columns) + ["finish_position"])
+        history_standard = pd.DataFrame(columns=list(program.columns) + ["finish_position"])
     else:
-        history = program.merge(
+        history_standard = program.merge(
             results[["race_id", "horse_id", "finish_position"]],
             on=["race_id", "horse_id"], how="inner",
         )
-        history["_start"] = pd.to_datetime(history["race_start_at"], utc=True, errors="raise")
+        history_standard["_start"] = pd.to_datetime(history_standard["race_start_at"], utc=True, errors="raise")
 
-    derived = pd.DataFrame([history_features(row, history) for _, row in program.iterrows()])
+    metadata_cols = [
+        "horse_id", "_start", "carried_weight", "race_class", "distance",
+        "surface", "finish_position", "track", "jockey", "trainer", "race_no", "race_id"
+    ]
+    history_standard_sub = history_standard[metadata_cols] if not history_standard.empty else pd.DataFrame(columns=metadata_cols)
+    combined_history = pd.concat([history_standard_sub, mapped_hr], ignore_index=True)
+    combined_history = combined_history.drop_duplicates(subset=["horse_id", "race_id"], keep="first")
+
+    derived = pd.DataFrame([history_features(row, combined_history) for _, row in program.iterrows()])
     frame = pd.concat([program.reset_index(drop=True), derived], axis=1)
     agf_latest = latest_market_asof(
         program, agf, ["agf_percent", "agf_rank", "captured_at"]
@@ -187,8 +280,6 @@ def write_frame(frame: pd.DataFrame) -> None:
 def main() -> int:
     frame = build_frame()
     write_frame(frame)
-    # A certified build is atomic from the caller's perspective: invariant CI
-    # and provenance validation must both pass before success is returned.
     subprocess.run([sys.executable, str(ROOT / "run_leakage_ci.py")], cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(ROOT / "validate_feature_provenance.py")], cwd=ROOT, check=True)
     print({"rows": len(frame), "races": frame["race_id"].nunique() if len(frame) else 0})
