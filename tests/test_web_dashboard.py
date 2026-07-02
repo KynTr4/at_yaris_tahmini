@@ -75,6 +75,62 @@ class WebDashboardTests(unittest.TestCase):
                 )
         web_app._PERFORMANCE_CACHE.clear()
 
+    def seed_rank_comparison_race(self, index: int, ranks: dict[str, int], agf_rank: int):
+        race_id = f"rank-comparison-{index}"
+        start = datetime(2031, 1, index, 15, 0, tzinfo=timezone.utc)
+        captured = start - timedelta(hours=2)
+        predicted = start - timedelta(minutes=20)
+        models = ("Logistic", "CatBoost", "XGBoost", "Ensemble")
+
+        def probabilities(winner_rank):
+            order = list(range(2, 7))
+            order.insert(winner_rank - 1, 1)
+            raw = {horse: 6 - position for position, horse in enumerate(order)}
+            total = sum(raw.values())
+            return {horse: raw[horse] / total for horse in raw}
+
+        by_model = {model: probabilities(ranks[model]) for model in models}
+        with sqlite3.connect(self.db) as connection:
+            snapshot_ids = {}
+            for horse in range(1, 7):
+                cursor = connection.execute(
+                    """INSERT INTO program_snapshots(
+                           race_id,horse_id,race_start_at,race_no,captured_at,
+                           source_endpoint,source_request_id,horse_name,track,surface,distance,race_class)
+                       VALUES(?,?,?,?,?,'test',?,?,?,?,?,?)""",
+                    (race_id, f"h{horse}", start.isoformat(), index, captured.isoformat(),
+                     f"rank-program-{index}-{horse}", f"AT {horse}", "İstanbul",
+                     "Kum", 1400, "Handikap"),
+                )
+                snapshot_ids[horse] = cursor.lastrowid
+            for horse in range(1, 7):
+                connection.execute(
+                    """INSERT INTO prediction_snapshots(
+                           prediction_id,model_version,pipeline_version,race_id,horse_id,
+                           prediction_time,race_start_at,logistic_probability,
+                           catboost_probability,xgboost_probability,ensemble_probability,
+                           predicted_rank,feature_hash,feature_values_json,
+                           feature_contract_version,feature_snapshot_id,source_request_id,
+                           agf_rank,odds)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'{}','v1',?,?,?,?)""",
+                    (f"rank-prediction-{index}-{horse}", "model-v1", "pipeline-v1", race_id,
+                     f"h{horse}", predicted.isoformat(), start.isoformat(),
+                     by_model["Logistic"][horse], by_model["CatBoost"][horse],
+                     by_model["XGBoost"][horse], by_model["Ensemble"][horse], horse,
+                     f"rank-hash-{index}-{horse}", snapshot_ids[horse],
+                     f"rank-program-{index}-{horse}", agf_rank if horse == 1 else None, 3.0),
+                )
+                connection.execute(
+                    """INSERT INTO race_results(
+                           race_id,horse_id,race_start_at,race_no,captured_at,
+                           source_endpoint,source_request_id,finish_position,result_odds,result_status)
+                       VALUES(?,?,?,?,?,'test',?,?,?,'finished')""",
+                    (race_id, f"h{horse}", start.isoformat(), index,
+                     (start + timedelta(hours=1)).isoformat(),
+                     f"rank-result-{index}-{horse}", 1 if horse == 1 else horse, 3.0),
+                )
+        web_app._PERFORMANCE_CACHE.clear()
+
     def tearDown(self):
         web_app.DB_PATH, web_app.LOG_DIR, web_app.REPORTS_DIR, web_app.BACKUP_DIR = self.originals
         self.temp.cleanup()
@@ -213,6 +269,48 @@ class WebDashboardTests(unittest.TestCase):
         export=self.client.get("/api/bet-simulator/export.csv?model=Ensemble&stake=20",headers=self.auth)
         self.assertEqual(export.status_code,200);self.assertIn("net_profit",export.text)
         self.assertEqual(self.client.get("/api/bet-simulator/summary?stake=0",headers=self.auth).status_code,400)
+
+    def test_bet_model_comparison_rank_metrics_agf_and_model_scope(self):
+        self.seed_rank_comparison_race(1, {
+            "Ensemble": 1, "Logistic": 3, "CatBoost": 5, "XGBoost": 6,
+        }, agf_rank=4)
+        self.seed_rank_comparison_race(2, {
+            "Ensemble": 4, "Logistic": 4, "CatBoost": 4, "XGBoost": 4,
+        }, agf_rank=4)
+
+        response = self.client.get(
+            "/api/bet-simulator/model-comparison?model=ALL&stake=20", headers=self.auth
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        models = response.json()["models"]
+        self.assertEqual(
+            [row["model"] for row in models],
+            ["Ensemble", "Logistic", "CatBoost", "XGBoost"],
+        )
+        by_model = {row["model"]: row for row in models}
+
+        ensemble = by_model["Ensemble"]
+        self.assertEqual(ensemble["evaluated_race_count"], 2)
+        self.assertAlmostEqual(ensemble["top1_accuracy"], 50.0)
+        self.assertAlmostEqual(ensemble["top3_accuracy"], 50.0)
+        self.assertAlmostEqual(ensemble["top5_accuracy"], 100.0)
+        self.assertAlmostEqual(ensemble["average_winner_rank"], 2.5)
+        self.assertAlmostEqual(ensemble["median_winner_rank"], 2.5)
+        self.assertEqual(ensemble["model_over_agf"], 1)
+        self.assertEqual(ensemble["agf_over_model"], 0)
+        self.assertEqual(ensemble["tied_with_agf"], 1)
+
+        self.assertAlmostEqual(by_model["Logistic"]["top3_accuracy"], 50.0)
+        self.assertAlmostEqual(by_model["CatBoost"]["top3_accuracy"], 0.0)
+        self.assertAlmostEqual(by_model["CatBoost"]["top5_accuracy"], 100.0)
+        self.assertAlmostEqual(by_model["XGBoost"]["top5_accuracy"], 50.0)
+        self.assertEqual(by_model["CatBoost"]["agf_over_model"], 1)
+        self.assertEqual(by_model["CatBoost"]["tied_with_agf"], 1)
+
+        single = self.client.get(
+            "/api/bet-simulator/model-comparison?model=CatBoost&stake=20", headers=self.auth
+        ).json()["models"]
+        self.assertEqual([row["model"] for row in single], ["CatBoost"])
 
     def test_performance_history_paginates_at_100_rows(self):
         for index in range(26):

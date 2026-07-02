@@ -30,6 +30,22 @@
   .metric-mini-grid span { color: var(--muted); }
   .metric-mini-grid strong { font-weight: 600; color: var(--text); }
 
+  .rank-summary-card h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+  .rank-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+  .rank-summary-grid > div { display: flex; justify-content: space-between; gap: 0.75rem; border-top: 1px solid var(--line); padding: 0.55rem 0; }
+  .rank-summary-grid > div:nth-child(odd) { padding-right: 0.75rem; }
+  .rank-summary-grid > div:nth-child(even) { padding-left: 0.75rem; border-left: 1px solid var(--line); }
+  .rank-summary-grid span { color: var(--muted); font-size: 0.75rem; }
+  .rank-summary-grid b { font-variant-numeric: tabular-nums; }
+  .winner-rank-table { min-width: 1280px; }
+  .agf-model-table { min-width: 620px; }
+  .winner-rank-table td, .agf-model-table td { font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 575px) {
+    .rank-summary-grid { grid-template-columns: 1fr; }
+    .rank-summary-grid > div:nth-child(odd), .rank-summary-grid > div:nth-child(even) { padding: 0.55rem 0; border-left: 0; }
+  }
+
   .sort-header { cursor: pointer; user-select: none; }
   .sort-header:hover { background: rgba(255,255,255,0.05); }
   .sort-header::after { content: ' ↕'; font-size: 0.7em; color: var(--muted); }
@@ -157,6 +173,42 @@
 <div class="row g-3 mb-4" id="models-summary-cards">
   <!-- Dynamic cards inserted here by JS -->
 </div>
+
+<!-- Winner Rank Comparison -->
+<section class="mb-4">
+  <div class="d-flex justify-content-between align-items-end mb-2">
+    <div>
+      <div class="eyebrow">GERÇEK KAZANAN SIRALAMASI</div>
+      <h2 class="text-white mb-0">Winner Rank Karşılaştırması</h2>
+    </div>
+  </div>
+  <div id="winner-rank-summary-cards" class="row g-3 mb-3"></div>
+  <div class="row g-3 mb-3">
+    <div class="col-xl-8">
+      <div class="panel h-100">
+        <h2 class="text-white mb-3">Winner Rank Dağılımı</h2>
+        <div class="chart-container"><canvas id="winner-rank-comparison-chart"></canvas></div>
+      </div>
+    </div>
+    <div class="col-xl-4">
+      <div class="panel h-100">
+        <h2 class="text-white mb-3">AGF Karşılaştırması</h2>
+        <div class="table-responsive">
+          <table class="table table-sm table-darkish align-middle agf-model-table mb-0">
+            <thead><tr><th>Model</th><th class="text-end">Model &gt; AGF</th><th class="text-end">AGF &gt; Model</th><th class="text-end">Beraber</th><th class="text-end">Model avantaj %</th></tr></thead>
+            <tbody id="agf-model-comparison-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel table-responsive">
+    <table class="table table-darkish align-middle winner-rank-table mb-0">
+      <thead><tr><th>Model</th><th class="text-end">Evaluated Race</th><th class="text-end">Top-1</th><th class="text-end">Top-3</th><th class="text-end">Top-5</th><th class="text-end">Average Winner Rank</th><th class="text-end">Median Winner Rank</th><th class="text-end">Net Kâr</th><th class="text-end">ROI</th><th class="text-end">AGF'den iyi</th><th class="text-end">AGF'den kötü</th><th class="text-end">AGF ile beraber</th></tr></thead>
+      <tbody id="winner-rank-comparison-body"></tbody>
+    </table>
+  </div>
+</section>
 
 <!-- Main Comparison Section -->
 <div class="row g-3 mb-4">
@@ -614,6 +666,79 @@
     `).join('');
   };
 
+  const renderWinnerRankComparison = (comparison) => {
+    const models = comparison.models || [];
+    $('winner-rank-summary-cards').innerHTML = models.map(m => `
+      <div class="col-sm-6 col-xl-3">
+        <div class="panel rank-summary-card h-100">
+          <h3 class="${modelTextClasses[m.model] || ''}">${esc(m.model)}</h3>
+          <div class="rank-summary-grid">
+            <div><span>Top-1 Accuracy</span><b>${num(m.top1_accuracy)}%</b></div>
+            <div><span>Top-3 Accuracy</span><b>${num(m.top3_accuracy)}%</b></div>
+            <div><span>Top-5 Accuracy</span><b>${num(m.top5_accuracy)}%</b></div>
+            <div><span>Average Rank</span><b>${num(m.average_winner_rank, 2)}</b></div>
+            <div><span>Median Rank</span><b>${num(m.median_winner_rank, 1)}</b></div>
+            <div><span>Evaluated Race</span><b>${m.evaluated_race_count}</b></div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    $('winner-rank-comparison-body').innerHTML = models.length ? models.map(m => `
+      <tr>
+        <td><b class="${modelTextClasses[m.model] || ''}">${esc(m.model)}</b></td>
+        <td class="text-end">${m.evaluated_race_count}</td>
+        <td class="text-end">${num(m.top1_accuracy)}%</td>
+        <td class="text-end">${num(m.top3_accuracy)}%</td>
+        <td class="text-end">${num(m.top5_accuracy)}%</td>
+        <td class="text-end">${num(m.average_winner_rank, 2)}</td>
+        <td class="text-end">${num(m.median_winner_rank, 1)}</td>
+        <td class="text-end ${m.net_profit >= 0 ? 'text-success' : 'text-danger'}">${m.net_profit >= 0 ? '+' : ''}${num(m.net_profit, 1)} TL</td>
+        <td class="text-end ${m.roi_percent >= 0 ? 'text-success' : 'text-danger'}">${m.roi_percent >= 0 ? '+' : ''}${num(m.roi_percent)}%</td>
+        <td class="text-end">${m.model_over_agf}</td>
+        <td class="text-end">${m.agf_over_model}</td>
+        <td class="text-end">${m.tied_with_agf}</td>
+      </tr>
+    `).join('') : '<tr><td colspan="12" class="empty">Değerlendirilebilir yarış yok.</td></tr>';
+
+    $('agf-model-comparison-body').innerHTML = models.length ? models.map(m => `
+      <tr>
+        <td><b class="${modelTextClasses[m.model] || ''}">${esc(m.model)}</b></td>
+        <td class="text-end">${m.model_over_agf}</td>
+        <td class="text-end">${m.agf_over_model}</td>
+        <td class="text-end">${m.tied_with_agf}</td>
+        <td class="text-end fw-semibold">${num(m.model_advantage_percent)}%</td>
+      </tr>
+    `).join('') : '<tr><td colspan="5" class="empty">AGF karşılaştırması yok.</td></tr>';
+
+    const canvas = $('winner-rank-comparison-chart');
+    if (activeCharts['winnerRank']) activeCharts['winnerRank'].destroy();
+    const labels = [...new Set(models.flatMap(m => m.rank_distribution.map(row => row.winner_rank)))].sort((a, b) => a - b);
+    activeCharts['winnerRank'] = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: models.map(m => ({
+          label: m.model,
+          data: labels.map(rank => m.rank_distribution.find(row => row.winner_rank === rank)?.race_count || 0),
+          backgroundColor: (modelColors[m.model] || '#ffffff') + '99',
+          borderColor: modelColors[m.model] || '#ffffff',
+          borderWidth: 1,
+          maxBarThickness: 34
+        }))
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: '#c8d3dd', usePointStyle: true, padding: 18 } } },
+        scales: {
+          x: { title: { display: true, text: 'Winner Rank', color: '#8c9aaa' }, ticks: { color: '#8c9aaa' }, grid: { display: false } },
+          y: { beginAtZero: true, title: { display: true, text: 'Yarış Sayısı', color: '#8c9aaa' }, ticks: { color: '#8c9aaa', precision: 0 }, grid: { color: '#263241' } }
+        }
+      }
+    });
+  };
+
   // Main Line Chart: cumulative net profit with custom HTML legend
   const renderLineChart = (labels, series, modelsSummary) => {
     const ctx = $('net-kar-line-chart').getContext('2d');
@@ -1008,9 +1133,10 @@
     
     try {
       const q = getQueryString();
-      const [summary, history] = await Promise.all([
+      const [summary, history, comparison] = await Promise.all([
         fetchJson(`/api/bet-simulator/summary?${q}`),
-        fetchJson(`/api/bet-simulator/history?${getQueryString(true)}`)
+        fetchJson(`/api/bet-simulator/history?${getQueryString(true)}`),
+        fetchJson(`/api/bet-simulator/model-comparison?${q}`)
       ]);
 
       summaryData = summary;
@@ -1018,6 +1144,7 @@
       renderModelSummaryCards(summary.models);
       renderSummaryTable(summary.models);
       renderStatisticsPanel(summary.stats_panel);
+      renderWinnerRankComparison(comparison);
       
       // Charts building
       renderLineChart(summary.cumulative_data.labels, summary.cumulative_data.series, summary.models);

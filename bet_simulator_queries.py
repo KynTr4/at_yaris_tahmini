@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 import sqlite3
+from collections import Counter
+from statistics import mean, median
 from typing import Any, Iterator
 
+from diagnostics_queries import DIAGNOSTICS_CTE
 from performance_queries import PERFORMANCE_CTE, PAGE_SIZE, normalize_filters, _where
 from race_scope import configure_sqlite
+
+MODEL_COMPARISON_ORDER = ("Ensemble", "Logistic", "CatBoost", "XGBoost")
 
 
 def normalize_bet_filters(date=None, track=None, model="Ensemble", outcome="all", stake=20, race_no=None) -> dict[str, Any]:
@@ -349,6 +354,74 @@ def summary(connection: sqlite3.Connection, filters: dict[str, Any]) -> dict[str
         "stats_panel": stats_panel,
     })
     return result
+
+
+def model_comparison(connection: sqlite3.Connection, filters: dict[str, Any]) -> dict[str, Any]:
+    configure_sqlite(connection)
+    selected = [
+        model for model in MODEL_COMPARISON_ORDER
+        if model in {value.strip() for value in str(filters.get("model") or "").split(",")}
+    ]
+    if not selected:
+        selected = list(MODEL_COMPARISON_ORDER)
+
+    clauses, params = [], []
+    if filters.get("date"):
+        clauses.append("race_date=?"); params.append(filters["date"])
+    if filters.get("track"):
+        clauses.append("track_key(track)=track_key(?)"); params.append(filters["track"])
+    if filters.get("race_no") not in (None, ""):
+        clauses.append("race_no=?"); params.append(int(filters["race_no"]))
+    if filters.get("outcome") == "correct":
+        clauses.append("winner_rank=1")
+    elif filters.get("outcome") == "incorrect":
+        clauses.append("winner_rank>1")
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+
+    stake = float(filters["stake"])
+    models = []
+    for model in selected:
+        rows = connection.execute(
+            DIAGNOSTICS_CTE + f"""
+            SELECT winner_rank,winner_agf_rank,net_return
+            FROM diagnostics{where}
+            ORDER BY race_start_at,race_id""",
+            [model, *params],
+        ).fetchall()
+        ranks = [int(row["winner_rank"]) for row in rows]
+        agf_rows = [row for row in rows if row["winner_agf_rank"] is not None]
+        model_over = sum(row["winner_rank"] < row["winner_agf_rank"] for row in agf_rows)
+        agf_over = sum(row["winner_agf_rank"] < row["winner_rank"] for row in agf_rows)
+        tied = len(agf_rows) - model_over - agf_over
+        bet_returns = [float(row["net_return"]) for row in rows if row["net_return"] is not None]
+        net_profit = stake * sum(bet_returns)
+        invested = stake * len(bet_returns)
+        distribution = Counter(ranks)
+        count = len(ranks)
+        models.append({
+            "model": model,
+            "evaluated_race_count": count,
+            "top1_count": sum(rank == 1 for rank in ranks),
+            "top3_count": sum(rank <= 3 for rank in ranks),
+            "top5_count": sum(rank <= 5 for rank in ranks),
+            "top1_accuracy": 100.0 * sum(rank == 1 for rank in ranks) / count if count else 0.0,
+            "top3_accuracy": 100.0 * sum(rank <= 3 for rank in ranks) / count if count else 0.0,
+            "top5_accuracy": 100.0 * sum(rank <= 5 for rank in ranks) / count if count else 0.0,
+            "average_winner_rank": mean(ranks) if ranks else 0.0,
+            "median_winner_rank": median(ranks) if ranks else 0.0,
+            "net_profit": net_profit,
+            "roi_percent": 100.0 * net_profit / invested if invested else 0.0,
+            "model_over_agf": model_over,
+            "agf_over_model": agf_over,
+            "tied_with_agf": tied,
+            "agf_evaluated_race_count": len(agf_rows),
+            "model_advantage_percent": 100.0 * model_over / len(agf_rows) if agf_rows else 0.0,
+            "rank_distribution": [
+                {"winner_rank": rank, "race_count": distribution[rank]}
+                for rank in sorted(distribution)
+            ],
+        })
+    return {"models": models}
 
 
 def export_rows(connection: sqlite3.Connection, filters: dict[str, Any]) -> Iterator[dict[str, Any]]:

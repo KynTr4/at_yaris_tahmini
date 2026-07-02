@@ -64,6 +64,7 @@ from race_scope import configure_sqlite, normalize_country, track_key
 from live_results_status import read_status_file, verified_status
 from bet_simulator_queries import (
     export_rows as query_bet_export, history as query_bet_history,
+    model_comparison as query_bet_model_comparison,
     normalize_bet_filters, summary as query_bet_summary,
 )
 
@@ -734,6 +735,15 @@ def api_bet_history(page: int = 1, date: str | None = None, track: str | None = 
     if page<1: raise HTTPException(status_code=400,detail="page must be >= 1")
     filters=_bet_filters(date,track,model,outcome,stake,race_no)
     return _performance_cached("bet_history",filters,query_bet_history,page)
+
+
+@app.get("/api/bet-simulator/model-comparison")
+def api_bet_model_comparison(date: str | None = None, track: str | None = None,
+                             model: str | None = None, outcome: str = "all",
+                             stake: float = 20, race_no: str | None = None):
+    selected = model if model and model.upper() != "ALL" else "Ensemble,Logistic,CatBoost,XGBoost"
+    filters = _bet_filters(date, track, selected, outcome, stake, race_no)
+    return _performance_cached("bet_model_comparison", filters, query_bet_model_comparison)
 
 
 @app.get("/api/bet-simulator/export.csv")
