@@ -189,14 +189,13 @@ def summary(
     configure_sqlite(connection)
     where, params = _where(filters)
     row = connection.execute(
-        PERFORMANCE_CTE
-        + f"""
-        SELECT COUNT(*) AS total_predictions,COUNT(*)>0 AS has_data,COALESCE(SUM(correct),0) AS correct_predictions,
+        f"""SELECT COUNT(*) AS total_predictions,COUNT(*)>0 AS has_data,
+               COALESCE(SUM(correct),0) AS correct_predictions,
                COALESCE(100.0*AVG(correct),0) AS accuracy_percent,
                COALESCE(100.0*SUM(net_return)/NULLIF(COUNT(net_return),0),0) AS roi_percent,
                COALESCE(SUM(net_return),0) AS net_profit,
                COUNT(net_return) AS roi_bets,COUNT(DISTINCT race_id) AS processed_races
-        FROM evaluated{where}""",
+        FROM performance_evaluated{where}""",
         params,
     ).fetchone()
     return dict(row)
@@ -208,13 +207,11 @@ def model_comparison(
     configure_sqlite(connection)
     where, params = _where(filters, include_model=False)
     rows = connection.execute(
-        PERFORMANCE_CTE
-        + f"""
-        SELECT model,COUNT(*) AS predictions,COALESCE(SUM(correct),0) AS correct,
+        f"""SELECT model,COUNT(*) AS predictions,COALESCE(SUM(correct),0) AS correct,
                COALESCE(100.0*AVG(correct),0) AS accuracy_percent,
                COALESCE(100.0*SUM(net_return)/NULLIF(COUNT(net_return),0),0) AS roi_percent,
                COALESCE(SUM(net_return),0) AS net_profit,COUNT(net_return) AS roi_bets
-        FROM evaluated{where} GROUP BY model
+        FROM performance_evaluated{where} GROUP BY model
         ORDER BY CASE model WHEN 'Logistic' THEN 1 WHEN 'CatBoost' THEN 2
                             WHEN 'XGBoost' THEN 3 ELSE 4 END""",
         params,
@@ -246,12 +243,10 @@ def history(
     page = max(1, int(page))
     where, params = _where(filters)
     rows = connection.execute(
-        PERFORMANCE_CTE
-        + f"""
-        SELECT race_date,city,race_no,race_time,predicted_horse,winner_name,correct,
+        f"""SELECT race_date,city,race_no,race_time,predicted_horse,winner_name,correct,
                decimal_odds,net_return,model,prediction_time,race_start_at,race_id,
                COUNT(*) OVER() AS total_count
-        FROM evaluated{where}
+        FROM performance_evaluated{where}
         ORDER BY race_start_at DESC,prediction_time DESC,
                  CASE model WHEN 'Ensemble' THEN 1 WHEN 'XGBoost' THEN 2
                             WHEN 'CatBoost' THEN 3 ELSE 4 END
@@ -262,7 +257,7 @@ def history(
     if not rows and page > 1:
         total = int(
             connection.execute(
-                PERFORMANCE_CTE + f"SELECT COUNT(*) FROM evaluated{where}", params
+                f"SELECT COUNT(*) FROM performance_evaluated{where}", params
             ).fetchone()[0]
         )
     items = []
@@ -284,49 +279,18 @@ def chart_data(
 ) -> dict[str, Any]:
     configure_sqlite(connection)
     where_all, params_all = _where(filters)
-    where_nomodel, params_nomodel = _where(filters, include_model=False)
-    # Single CTE execution: eval_mat MATERIALIZED ensures evaluated is computed once;
-    # daily (top-30) and model-comparison rows are fetched in one round-trip via UNION ALL.
-    combined = connection.execute(
-        PERFORMANCE_CTE
-        + f"""
-        ,eval_mat AS MATERIALIZED (SELECT * FROM evaluated)
-        ,chart_daily AS (
-            SELECT race_date, COUNT(*) AS predictions,
-                   100.0*AVG(correct) AS accuracy_percent,
-                   100.0*SUM(net_return)/NULLIF(COUNT(net_return),0) AS roi_percent,
-                   COALESCE(SUM(net_return),0) AS daily_profit
-            FROM eval_mat{where_all} GROUP BY race_date
-        )
-        ,chart_models AS (
-            SELECT model, COUNT(*) AS predictions,
-                   COALESCE(SUM(correct),0) AS correct,
-                   COALESCE(100.0*AVG(correct),0) AS accuracy_percent,
-                   COALESCE(100.0*SUM(net_return)/NULLIF(COUNT(net_return),0),0) AS roi_percent,
-                   COALESCE(SUM(net_return),0) AS net_profit,
-                   COUNT(net_return) AS roi_bets
-            FROM eval_mat{where_nomodel} GROUP BY model
-        )
-        SELECT 'D' AS _t, NULL AS model,
-               d.race_date, d.predictions, d.accuracy_percent, d.roi_percent, d.daily_profit,
-               NULL AS correct, NULL AS net_profit, NULL AS roi_bets
-        FROM (SELECT * FROM chart_daily ORDER BY race_date DESC LIMIT 30) d
-        UNION ALL
-        SELECT 'M' AS _t, m.model,
-               NULL AS race_date, m.predictions, m.accuracy_percent, m.roi_percent,
-               m.net_profit AS daily_profit,
-               m.correct, m.net_profit, m.roi_bets
-        FROM chart_models m""",
-        [*params_all, *params_nomodel],
+    # Daily trend: 30 most recent race-days matching the filter
+    daily_rows = connection.execute(
+        f"""SELECT race_date, COUNT(*) AS predictions,
+               100.0*AVG(correct) AS accuracy_percent,
+               100.0*SUM(net_return)/NULLIF(COUNT(net_return),0) AS roi_percent,
+               COALESCE(SUM(net_return),0) AS daily_profit
+        FROM performance_evaluated{where_all}
+        GROUP BY race_date ORDER BY race_date DESC LIMIT 30""",
+        params_all,
     ).fetchall()
-    all_rows = [dict(row) for row in combined]
-    # Daily rows: oldest → newest for correct cumulative computation
-    daily_raw = sorted(
-        [r for r in all_rows if r["_t"] == "D"],
-        key=lambda r: r["race_date"],
-    )
     days, cumulative = [], 0.0
-    for row in daily_raw:
+    for row in reversed(daily_rows):
         cumulative += float(row["daily_profit"] or 0)
         days.append(
             {
@@ -338,45 +302,17 @@ def chart_data(
                 "cumulative_profit": cumulative,
             }
         )
-    # Model rows: reconstruct in canonical MODELS order
-    found = {
-        row["model"]: {
-            "model": row["model"],
-            "predictions": row["predictions"],
-            "correct": row["correct"],
-            "accuracy_percent": row["accuracy_percent"],
-            "roi_percent": row["roi_percent"],
-            "net_profit": row["net_profit"],
-            "roi_bets": row["roi_bets"],
-        }
-        for row in all_rows
-        if row["_t"] == "M"
-    }
-    models = [
-        found.get(
-            m,
-            {
-                "model": m,
-                "predictions": 0,
-                "correct": 0,
-                "accuracy_percent": 0.0,
-                "roi_percent": 0.0,
-                "net_profit": 0.0,
-                "roi_bets": 0,
-            },
-        )
-        for m in MODELS
-    ]
+    # model_comparison now hits performance_evaluated directly — cheap
+    models = model_comparison(connection, filters)
     return {"daily": days, "models": models}
 
 
 def race_filters(connection: sqlite3.Connection) -> dict[str, Any]:
     configure_sqlite(connection)
     rows = connection.execute(
-        PERFORMANCE_CTE
-        + """
-        SELECT city,COUNT(DISTINCT race_id) AS races,MIN(race_date) AS first_date,
-               MAX(race_date) AS last_date FROM evaluated GROUP BY track_key(city) ORDER BY city"""
+        """SELECT city,COUNT(DISTINCT race_id) AS races,MIN(race_date) AS first_date,
+               MAX(race_date) AS last_date
+        FROM performance_evaluated GROUP BY track_key(city) ORDER BY city"""
     ).fetchall()
     return {
         "tracks": [dict(row) for row in rows],

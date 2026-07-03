@@ -1,4 +1,5 @@
 """Linux/systemd daily pipeline with fail-closed step execution."""
+
 from __future__ import annotations
 
 import shlex
@@ -17,6 +18,7 @@ STEPS = [
     ("update_track_conditions.py", [], 900),
     ("update_workouts.py", [], 900),
     ("update_results.py", [], 1800),
+    ("materialize_performance.py", [], 120),
     ("build_asof_features.py", [], 1800),
     ("validate_feature_provenance.py", [], 900),
     ("shadow_monitor.py", [], 1800),
@@ -26,9 +28,7 @@ STEPS = [
 class PipelineStepError(RuntimeError):
     def __init__(self, result: dict[str, object]):
         self.result = result
-        super().__init__(
-            f"{result['script']} exited with code {result['exit_code']}"
-        )
+        super().__init__(f"{result['script']} exited with code {result['exit_code']}")
 
 
 def failure_report(result: dict[str, object], parent_traceback: str) -> str:
@@ -38,23 +38,30 @@ def failure_report(result: dict[str, object], parent_traceback: str) -> str:
     tracebacks = parent_traceback.strip()
     if child_traceback and child_traceback not in tracebacks:
         tracebacks += f"\n\nChild process traceback:\n{child_traceback}"
-    return "\n".join([
-        "DAILY PIPELINE STEP FAILED",
-        f"script: {result['script']}",
-        f"command: {command_text}",
-        f"exit code: {result['exit_code']}",
-        f"elapsed time: {result.get('duration_seconds', 0)} seconds",
-        "Python traceback:",
-        tracebacks or "(child returned non-zero without raising a Python exception)",
-        "stderr:",
-        str(result.get("stderr") or "(empty)"),
-        "stdout:",
-        str(result.get("stdout") or "(empty)"),
-    ])
+    return "\n".join(
+        [
+            "DAILY PIPELINE STEP FAILED",
+            f"script: {result['script']}",
+            f"command: {command_text}",
+            f"exit code: {result['exit_code']}",
+            f"elapsed time: {result.get('duration_seconds', 0)} seconds",
+            "Python traceback:",
+            tracebacks
+            or "(child returned non-zero without raising a Python exception)",
+            "stderr:",
+            str(result.get("stderr") or "(empty)"),
+            "stdout:",
+            str(result.get("stdout") or "(empty)"),
+        ]
+    )
 
 
 def main() -> int:
-    payload = {"runner": "daily", "started_at": datetime.now(timezone.utc).isoformat(), "steps": []}
+    payload = {
+        "runner": "daily",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "steps": [],
+    }
     current_script = None
     try:
         with runner_lock("daily_pipeline"):
@@ -71,22 +78,26 @@ def main() -> int:
                 )
         payload["status"] = "success"
     except PipelineStepError as exc:
-        payload.update({
-            "status": "failed",
-            "failed_step": exc.result["script"],
-            "traceback": traceback.format_exc(),
-        })
+        payload.update(
+            {
+                "status": "failed",
+                "failed_step": exc.result["script"],
+                "traceback": traceback.format_exc(),
+            }
+        )
         print(
             failure_report(exc.result, str(payload["traceback"])),
             file=sys.stderr,
             flush=True,
         )
     except Exception:
-        payload.update({
-            "status": "failed",
-            "failed_step": current_script or "daily_pipeline",
-            "traceback": traceback.format_exc(),
-        })
+        payload.update(
+            {
+                "status": "failed",
+                "failed_step": current_script or "daily_pipeline",
+                "traceback": traceback.format_exc(),
+            }
+        )
         print(str(payload["traceback"]), file=sys.stderr, flush=True)
     finally:
         payload["ended_at"] = datetime.now(timezone.utc).isoformat()
