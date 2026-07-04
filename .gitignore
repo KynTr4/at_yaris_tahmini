@@ -1,7 +1,10 @@
 .env
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.csv
 output/
 backups/
 *.parquet
@@ -9,6 +12,7 @@ backups/
 !models/*.pkl
 *.joblib
 __pycache__/
+**/__pycache__/
 .venv/
 logs/
 dist/
@@ -20,5 +24,9 @@ lake/
 *.log
 data/agfv2_raw/
 reports/results_coverage_*.md
+reports/debug*
 vps_status.py
 tmp/
+cache/
+downloads/
+nul

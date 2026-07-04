@@ -129,6 +129,18 @@ evaluated AS (
 """
 
 
+def _performance_source(connection: sqlite3.Connection) -> str:
+    """Use materialized rows when available, otherwise evaluate live data."""
+    try:
+        if connection.execute(
+            "SELECT 1 FROM performance_evaluated LIMIT 1"
+        ).fetchone():
+            return "performance_evaluated"
+    except sqlite3.OperationalError:
+        pass
+    return f"({PERFORMANCE_CTE} SELECT * FROM evaluated)"
+
+
 def normalize_filters(
     date: str | None = None,
     track: str | None = None,
@@ -188,6 +200,7 @@ def summary(
 ) -> dict[str, Any]:
     configure_sqlite(connection)
     where, params = _where(filters)
+    source = _performance_source(connection)
     row = connection.execute(
         f"""SELECT COUNT(*) AS total_predictions,COUNT(*)>0 AS has_data,
                COALESCE(SUM(correct),0) AS correct_predictions,
@@ -195,7 +208,7 @@ def summary(
                COALESCE(100.0*SUM(net_return)/NULLIF(COUNT(net_return),0),0) AS roi_percent,
                COALESCE(SUM(net_return),0) AS net_profit,
                COUNT(net_return) AS roi_bets,COUNT(DISTINCT race_id) AS processed_races
-        FROM performance_evaluated{where}""",
+        FROM {source}{where}""",
         params,
     ).fetchone()
     return dict(row)
@@ -206,12 +219,13 @@ def model_comparison(
 ) -> list[dict[str, Any]]:
     configure_sqlite(connection)
     where, params = _where(filters, include_model=False)
+    source = _performance_source(connection)
     rows = connection.execute(
         f"""SELECT model,COUNT(*) AS predictions,COALESCE(SUM(correct),0) AS correct,
                COALESCE(100.0*AVG(correct),0) AS accuracy_percent,
                COALESCE(100.0*SUM(net_return)/NULLIF(COUNT(net_return),0),0) AS roi_percent,
                COALESCE(SUM(net_return),0) AS net_profit,COUNT(net_return) AS roi_bets
-        FROM performance_evaluated{where} GROUP BY model
+        FROM {source}{where} GROUP BY model
         ORDER BY CASE model WHEN 'Logistic' THEN 1 WHEN 'CatBoost' THEN 2
                             WHEN 'XGBoost' THEN 3 ELSE 4 END""",
         params,
@@ -242,11 +256,12 @@ def history(
     configure_sqlite(connection)
     page = max(1, int(page))
     where, params = _where(filters)
+    source = _performance_source(connection)
     rows = connection.execute(
         f"""SELECT race_date,city,race_no,race_time,predicted_horse,winner_name,correct,
                decimal_odds,net_return,model,prediction_time,race_start_at,race_id,
                COUNT(*) OVER() AS total_count
-        FROM performance_evaluated{where}
+        FROM {source}{where}
         ORDER BY race_start_at DESC,prediction_time DESC,
                  CASE model WHEN 'Ensemble' THEN 1 WHEN 'XGBoost' THEN 2
                             WHEN 'CatBoost' THEN 3 ELSE 4 END
@@ -257,7 +272,7 @@ def history(
     if not rows and page > 1:
         total = int(
             connection.execute(
-                f"SELECT COUNT(*) FROM performance_evaluated{where}", params
+                f"SELECT COUNT(*) FROM {source}{where}", params
             ).fetchone()[0]
         )
     items = []
@@ -279,13 +294,14 @@ def chart_data(
 ) -> dict[str, Any]:
     configure_sqlite(connection)
     where_all, params_all = _where(filters)
+    source = _performance_source(connection)
     # Daily trend: 30 most recent race-days matching the filter
     daily_rows = connection.execute(
         f"""SELECT race_date, COUNT(*) AS predictions,
                100.0*AVG(correct) AS accuracy_percent,
                100.0*SUM(net_return)/NULLIF(COUNT(net_return),0) AS roi_percent,
                COALESCE(SUM(net_return),0) AS daily_profit
-        FROM performance_evaluated{where_all}
+        FROM {source}{where_all}
         GROUP BY race_date ORDER BY race_date DESC LIMIT 30""",
         params_all,
     ).fetchall()
@@ -309,10 +325,11 @@ def chart_data(
 
 def race_filters(connection: sqlite3.Connection) -> dict[str, Any]:
     configure_sqlite(connection)
+    source = _performance_source(connection)
     rows = connection.execute(
-        """SELECT city,COUNT(DISTINCT race_id) AS races,MIN(race_date) AS first_date,
+        f"""SELECT city,COUNT(DISTINCT race_id) AS races,MIN(race_date) AS first_date,
                MAX(race_date) AS last_date
-        FROM performance_evaluated GROUP BY track_key(city) ORDER BY city"""
+        FROM {source} GROUP BY track_key(city) ORDER BY city"""
     ).fetchall()
     return {
         "tracks": [dict(row) for row in rows],

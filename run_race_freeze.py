@@ -200,6 +200,17 @@ def _classify_state(
     return FS.WAITING
 
 
+def classify_race(
+    now: datetime,
+    start: datetime,
+    has_final: bool,
+    has_result: bool,
+    supported: bool,
+) -> str:
+    """Public, side-effect-free freeze-window classifier."""
+    return _classify_state(now, start, has_final, has_result, supported)
+
+
 def _determine_failure_reason(
     facts: dict[str, Any], now: datetime, start: datetime
 ) -> str:

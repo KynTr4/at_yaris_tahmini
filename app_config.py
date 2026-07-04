@@ -19,10 +19,21 @@ def _load_env_file(path: Path) -> None:
 SOURCE_ROOT = Path(__file__).resolve().parent
 _load_env_file(Path(os.environ.get("ENV_FILE", SOURCE_ROOT / ".env")))
 
-PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", SOURCE_ROOT)).expanduser().resolve()
-DB_PATH = Path(os.environ.get("DB_PATH", PROJECT_ROOT / "pedigreeall_progress.db")).expanduser().resolve()
-LOG_DIR = Path(os.environ.get("LOG_DIR", PROJECT_ROOT / "logs")).expanduser().resolve()
-BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", PROJECT_ROOT / "backups")).expanduser().resolve()
+
+def _runtime_path(name: str, fallback: Path) -> Path:
+    """Resolve runtime paths without interpreting Linux VPS paths on Windows."""
+    raw = os.environ.get(name)
+    if not raw:
+        return fallback.expanduser().resolve()
+    if os.name == "nt" and raw.startswith("/") and not raw.startswith("//"):
+        return fallback.expanduser().resolve()
+    return Path(raw).expanduser().resolve()
+
+
+PROJECT_ROOT = _runtime_path("PROJECT_ROOT", SOURCE_ROOT)
+DB_PATH = _runtime_path("DB_PATH", PROJECT_ROOT / "pedigreeall_progress.db")
+LOG_DIR = _runtime_path("LOG_DIR", PROJECT_ROOT / "logs")
+BACKUP_DIR = _runtime_path("BACKUP_DIR", PROJECT_ROOT / "backups")
 OUTPUT_DIR = PROJECT_ROOT / "output"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"

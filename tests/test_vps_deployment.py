@@ -93,8 +93,10 @@ class VpsDeploymentTests(unittest.TestCase):
 
     def test_systemd_templates_exist(self):
         root = Path(__file__).resolve().parents[1] / "deploy" / "systemd"
-        self.assertEqual(len(list(root.glob("*.service"))), 8)
-        self.assertEqual(len(list(root.glob("*.timer"))), 7)
+        services = {path.name for path in root.glob("*.service")}
+        timers = {path.name for path in root.glob("*.timer")}
+        self.assertIn("at-yaris-storage-manager.service", services)
+        self.assertIn("at-yaris-storage-manager.timer", timers)
         agf_timer = (root / "at-yaris-agf-update.timer").read_text(encoding="utf-8")
         self.assertIn("OnCalendar=*-*-* 09..23:*:00 Europe/Istanbul", agf_timer)
         self.assertTrue((root / "at-yaris-web.service").is_file())

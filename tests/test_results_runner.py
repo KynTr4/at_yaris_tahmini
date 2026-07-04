@@ -122,7 +122,7 @@ class ResultsRunnerTests(unittest.TestCase):
                     (self.output_dir / "results_coverage_run.json").write_text(
                         json.dumps({"dates": []}), encoding="utf-8"
                     )
-                else:
+                elif script == "shadow_monitor.py":
                     connection.execute(
                         """INSERT INTO shadow_monitoring_runs(
                                run_id,run_at,shadow_date,leakage_gate_pass,feature_contract_pass,
@@ -223,10 +223,11 @@ class ResultsRunnerTests(unittest.TestCase):
         )
         with patch.object(run_results_update, "run_step", side_effect=fake_run_step):
             self.assertEqual(run_results_update.main(options), 0)
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][0], "update_results.py")
         self.assertIn("--country", calls[0][1]); self.assertIn("TR", calls[0][1])
         self.assertIn("--today-tracks", calls[0][1])
+        self.assertEqual(calls[1], ("import_race_results_csv.py", ["--date", "2030-01-01"]))
         payload = json.loads((self.log_dir / "live_results_status.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["country"], "TR")
         self.assertEqual(payload["total_tracks"], 1)
