@@ -12,13 +12,13 @@
         />
         <link href="/static/style.css" rel="stylesheet" />
     </head>
-    <body>
         <nav
-            class="navbar navbar-expand-lg navbar-dark border-bottom border-secondary sticky-top"
+            class="navbar navbar-expand-lg navbar-dark sticky-top"
+            style="border-bottom: 1px solid var(--border, var(--line));"
         >
             <div class="container-fluid px-lg-4">
-                <a class="navbar-brand fw-semibold" href="/"
-                    >AT YARIŞ <span>SHADOW</span></a
+                <a class="navbar-brand fw-semibold d-flex align-items-center gap-1" href="/" style="font-size: 1.1rem; letter-spacing: -0.02em;"
+                    >AT YARIŞ <span style="color: var(--accent);">SHADOW</span></a
                 >
                 <button
                     class="navbar-toggler"
@@ -28,24 +28,27 @@
                 >
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div id="nav" class="collapse navbar-collapse">
-                    <div class="navbar-nav ms-auto">
-                        <a class="nav-link" href="/">Durum</a>
-                        <a class="nav-link" href="/races">Yarışlar</a>
-                        <a
-                            class="nav-link fw-bold text-warning"
-                            href="/tjk-results"
-                            >🏇 TJK Sonuçlar</a
-                        >
-                        <a class="nav-link" href="/predictions">Tahminler</a>
-                        <a class="nav-link" href="/performance">Performans</a>
-                        <a class="nav-link" href="/diagnostics">Diagnostics</a>
-                        <a class="nav-link" href="/shadow-monitor"
-                            >Shadow İzleme</a
-                        >
-                        <a class="nav-link" href="/bet-simulator">Bahis</a>
-                        <a class="nav-link" href="/reports">Raporlar</a>
-                        <a class="nav-link" href="/logs">Loglar</a>
+                <div id="nav" class="collapse navbar-collapse d-lg-flex justify-content-between">
+                    <div class="nav-tabs-custom mx-auto my-2 my-lg-0">
+                        <a class="nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">Durum</a>
+                        <a class="nav-link {% if request.url.path == '/races' %}active{% endif %}" href="/races">Yarış Günü</a>
+                        <a class="nav-link {% if request.url.path == '/predictions' %}active{% endif %}" href="/predictions">Tahminler</a>
+                        <a class="nav-link {% if request.url.path in ['/tjk-results', '/performance'] %}active{% endif %}" href="/tjk-results">Sonuçlar</a>
+                        <a class="nav-link {% if request.url.path == '/bet-simulator' %}active{% endif %}" href="/bet-simulator">Bahis</a>
+                        <a class="nav-link {% if request.url.path == '/shadow-monitor' %}active{% endif %}" href="/shadow-monitor">Shadow İzleme</a>
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Diğer</a>
+                            <ul class="dropdown-menu dropdown-menu-dark shadow border" style="background: var(--panel); border-color: var(--line) !important; font-size: 0.85rem;">
+                                <li><a class="dropdown-item py-2" href="/performance">📊 Performans Analizi</a></li>
+                                <li><a class="dropdown-item py-2" href="/diagnostics">🔬 Diagnostics</a></li>
+                                <li><a class="dropdown-item py-2" href="/reports">📑 Raporlar</a></li>
+                                <li><a class="dropdown-item py-2" href="/logs">📋 Sistem Logları</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="topbar-time ms-lg-0 mt-2 mt-lg-0">
+                        <span id="header-timestamp">Son güncelleme: {% if data is defined and data.last_pipeline_at %}{{ data.last_pipeline_at }}{% endif %}</span>
+                        <button class="btn-reload" onclick="window.location.reload();" title="Sayfayı Yenile">↻</button>
                     </div>
                 </div>
             </div>
@@ -54,5 +57,16 @@
             {% block content %}{% endblock %}
         </main>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const ts = document.getElementById('header-timestamp');
+                if (ts && (!ts.textContent.trim() || ts.textContent.trim() === 'Son güncelleme:')) {
+                    const now = new Date();
+                    const pad = n => String(n).padStart(2, '0');
+                    const dateStr = `${pad(now.getDate())}.${pad(now.getMonth()+1)}.${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+                    ts.textContent = `Son güncelleme: ${dateStr}`;
+                }
+            });
+        </script>
     </body>
 </html>

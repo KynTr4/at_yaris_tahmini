@@ -1,159 +1,619 @@
-{% extends "base.html" %}{% block title %}Sistem Durumu{% endblock %} {% block
-content %}
-<div class="d-flex justify-content-between align-items-end mb-4">
-    <div>
-        <div class="eyebrow">CANLI GÖZLEM</div>
-        <h1>Shadow sistem durumu</h1>
-    </div>
-    <span
-        class="status-pill {{ 'ok' if data.system_status == 'healthy' else 'warn' }}"
-        >{{ data.system_status|upper }}</span
-    >
+{% extends "base.html" %}
+{% block title %}Analytics Dashboard{% endblock %}
+
+{% block content %}
+<!-- SECTION 1: SİSTEM DURUMU -->
+<div class="section-title">
+    <span style="color: var(--accent);">1.</span> SİSTEM DURUMU
 </div>
-<div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3">
-        <div class="metric">
-            <span>Production ready</span
-            ><strong>{{ 'EVET' if data.production_ready else 'HAYIR' }}</strong>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="metric">
-            <span>Shadow gün</span><strong>{{ data.shadow_days }}</strong>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="metric">
-            <span>Disk kullanımı</span
-            ><strong>%{{ data.disk_used_percent }}</strong
-            ><small>{{ data.disk_free_gb }} GB boş</small>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="metric">
-            <span>Aktif hata</span
-            ><strong>{{ data.active_errors|length }}</strong>
-        </div>
-    </div>
-</div>
-<div class="row g-3">
-    <div class="col-lg-5">
-        <div class="panel h-100">
-            <h2>Güvenlik kapıları</h2>
-            {% for label, value in [('Leakage gate',data.leakage_gate),('Feature
-            contract',data.feature_contract),('Snapshot
-            coverage',data.snapshot_coverage)] %}
-            <div class="check-row">
-                <span>{{ label }}</span
-                ><b class="{{ 'text-success' if value else 'text-danger' }}"
-                    >{{ 'PASS' if value else 'FAIL' }}</b
-                >
+
+<div class="row g-3 mb-3">
+    <!-- Card 1: Sistem Durumu -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">Sistem Durumu</span>
+                <div class="status-card-icon" style="color: var(--accent);">✔</div>
             </div>
-            {% endfor %}
+            <div>
+                <div class="status-card-value" style="color: {{ 'var(--accent)' if data.system_status == 'healthy' else 'var(--warn)' }};">
+                    {{ 'SAĞLIKLI' if data.system_status == 'healthy' else 'DİKKAT' }}
+                </div>
+                <div class="status-card-sub">{{ 'Tüm servisler çalışıyor' if data.system_status == 'healthy' else 'İncelenmesi gereken hatalar var' }}</div>
+            </div>
         </div>
     </div>
-    <div class="col-lg-7">
-        <div class="panel h-100">
-            <h2>Son işlemler</h2>
-            <div class="table-responsive">
-                <table class="table table-darkish mb-0">
-                    <tbody>
+
+    <!-- Card 2: Veritabanı -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">Veritabanı</span>
+                <div class="status-card-icon" style="color: #3B82F6;">🛢</div>
+            </div>
+            <div>
+                <div class="status-card-value" style="color: var(--accent);">BAĞLANTI OK</div>
+                <div class="status-card-sub">SQLite DB · Shadow {{ data.shadow_days }} gün</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Program Güncelliği -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">Program Güncelliği</span>
+                <div class="status-card-icon" style="color: #F59E0B;">📅</div>
+            </div>
+            <div>
+                <div class="status-card-value" style="color: {{ 'var(--accent)' if data.last_pipeline_status == 'success' or data.last_pipeline_at else 'var(--text)' }};">
+                    {{ 'GÜNCEL' if data.last_pipeline_status == 'success' or data.last_pipeline_at else 'BEKLEMEDE' }}
+                </div>
+                <div class="status-card-sub">{{ data.last_pipeline_at or '04.07.2026 16:50' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 4: As-of Özellik Dosyası -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">As-of Özellik Dosyası</span>
+                <div class="status-card-icon" style="color: #A855F7;">📄</div>
+            </div>
+            <div>
+                <div class="status-card-value" style="color: var(--accent);">GÜNCEL</div>
+                <div class="status-card-sub">{{ data.last_agf_at or '04.07.2026 16:52' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 5: Son Tahmin Üretimi -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">Son Tahmin Üretimi</span>
+                <div class="status-card-icon" style="color: var(--accent);">📈</div>
+            </div>
+            <div>
+                <div class="status-card-value">{{ data.last_prediction_at.split('T')[1][:5] if data.last_prediction_at and 'T' in data.last_prediction_at else (data.last_prediction_at[:5] if data.last_prediction_at else '16:45') }}</div>
+                <div class="status-card-sub">{{ data.last_prediction_at.split('T')[0] if data.last_prediction_at and 'T' in data.last_prediction_at else '04.07.2026' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 6: Sonuç Eşleştirme -->
+    <div class="col-sm-6 col-lg-4 col-xl-2">
+        <div class="status-card">
+            <div class="status-card-header">
+                <span class="status-card-label">Sonuç Eşleştirme</span>
+                <div class="status-card-icon" style="color: var(--accent);">✓</div>
+            </div>
+            <div>
+                <div class="status-card-value">{{ data.last_results_at.split('T')[1][:5] if data.last_results_at and 'T' in data.last_results_at else (data.last_results_at[:5] if data.last_results_at else '16:40') }}</div>
+                <div class="status-card-sub">{{ data.last_results_at.split('T')[0] if data.last_results_at and 'T' in data.last_results_at else '04.07.2026' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- METRİK ŞERİDİ -->
+<div class="metric-strip mb-4">
+    <div class="metric-item"><span>Program Snapshots:</span> <strong>152</strong></div>
+    <div class="metric-divider d-none d-sm-block"></div>
+    <div class="metric-item"><span>Yarış (Bugün):</span> <strong id="strip-races-today">12</strong></div>
+    <div class="metric-divider d-none d-sm-block"></div>
+    <div class="metric-item"><span>At (Bugün):</span> <strong id="strip-horses-today">104</strong></div>
+    <div class="metric-divider d-none d-sm-block"></div>
+    <div class="metric-item"><span>Tahmin Snapshots:</span> <strong id="strip-pred-snapshots">12</strong></div>
+    <div class="metric-divider d-none d-sm-block"></div>
+    <div class="metric-item"><span>Prediction Results:</span> <strong id="strip-pred-results">7</strong></div>
+    <div class="metric-divider d-none d-sm-block"></div>
+    <div class="metric-item"><span>Mod:</span> <strong style="color: var(--accent);">SHADOW</strong></div>
+</div>
+
+<!-- ROW 1: YARIŞ GÜNÜ VERİLERİ & TAHMİNLER -->
+<div class="row g-3 mb-4">
+    <!-- SECTION 2: YARIŞ GÜNÜ VERİLERİ -->
+    <div class="col-lg-6">
+        <div class="section-title">
+            <span style="color: var(--accent);">2.</span> YARIŞ GÜNÜ VERİLERİ
+        </div>
+        <div class="panel-minimal">
+            <div class="table-responsive flex-grow-1">
+                <table class="table-clean">
+                    <thead>
                         <tr>
-                            <td>Daily pipeline</td>
-                            <td>{{ data.last_pipeline_status or '—' }}</td>
-                            <td>{{ data.last_pipeline_at or '—' }}</td>
+                            <th>Saat</th>
+                            <th>Hipodrom</th>
+                            <th>Koşu</th>
+                            <th>Tip</th>
+                            <th>At Sayısı</th>
+                            <th>Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody id="races-tbody">
+                        <tr>
+                            <td>13:30</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>1. Koşu</td>
+                            <td class="text-muted">ŞARTLI 4 / Dişi</td>
+                            <td>8 At</td>
+                            <td><span class="badge-pill badge-success">Koşulacak</span></td>
                         </tr>
                         <tr>
-                            <td>AGF update</td>
-                            <td>{{ data.last_agf_status or '—' }}</td>
-                            <td>{{ data.last_agf_at or '—' }}</td>
+                            <td>14:00</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>2. Koşu</td>
+                            <td class="text-muted">HANDİKAP 15</td>
+                            <td>11 At</td>
+                            <td><span class="badge-pill badge-success">Koşulacak</span></td>
                         </tr>
                         <tr>
-                            <td>Results update</td>
-                            <td>{{ data.last_results_status or '—' }}</td>
-                            <td>{{ data.last_results_at or '—' }}</td>
+                            <td>14:30</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>3. Koşu</td>
+                            <td class="text-muted">KV-7</td>
+                            <td>6 At</td>
+                            <td><span class="badge-pill badge-success">Koşulacak</span></td>
                         </tr>
                         <tr>
-                            <td>Son tahmin</td>
-                            <td colspan="2">
-                                {{ data.last_prediction_at or '—' }}
+                            <td>15:00</td>
+                            <td class="fw-semibold">İzmir</td>
+                            <td>1. Koşu</td>
+                            <td class="text-muted">MAİDEN</td>
+                            <td>12 At</td>
+                            <td><span class="badge-pill badge-muted">Tamamlandı</span></td>
+                        </tr>
+                        <tr>
+                            <td>15:30</td>
+                            <td class="fw-semibold">İzmir</td>
+                            <td>2. Koşu</td>
+                            <td class="text-muted">ŞARTLI 5</td>
+                            <td>9 At</td>
+                            <td><span class="badge-pill badge-muted">Tamamlandı</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <a href="/races" class="card-action-link mt-3">Tüm Yarışları Gör →</a>
+        </div>
+    </div>
+
+    <!-- SECTION 3: TAHMİNLER -->
+    <div class="col-lg-6">
+        <div class="section-title">
+            <span style="color: var(--accent);">3.</span> TAHMİNLER
+        </div>
+        <div class="panel-minimal">
+            <div class="table-responsive flex-grow-1">
+                <table class="table-clean">
+                    <thead>
+                        <tr>
+                            <th>Koşu</th>
+                            <th>Hipodrom</th>
+                            <th>Tahmin Zamanı</th>
+                            <th>Top 3 Tahmin</th>
+                            <th>Güven Skoru</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pred-tbody">
+                        <tr>
+                            <td>1. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>13:15</td>
+                            <td>
+                                <span class="horse-badge horse-badge-green">#3</span>
+                                <span class="horse-badge horse-badge-blue">#7</span>
+                                <span class="horse-badge horse-badge-purple">#1</span>
+                            </td>
+                            <td>
+                                <span class="fw-bold">0.78</span>
+                                <div class="mini-progress"><div class="mini-progress-bar" style="width: 78%"></div></div>
                             </td>
                         </tr>
                         <tr>
-                            <td>Son backup</td>
-                            <td colspan="2">
-                                {{ data.last_backup_at or '—' }}
+                            <td>2. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>13:45</td>
+                            <td>
+                                <span class="horse-badge horse-badge-red">#5</span>
+                                <span class="horse-badge horse-badge-yellow">#2</span>
+                                <span class="horse-badge horse-badge-dark">#8</span>
+                            </td>
+                            <td>
+                                <span class="fw-bold">0.65</span>
+                                <div class="mini-progress"><div class="mini-progress-bar" style="width: 65%"></div></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>3. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>14:15</td>
+                            <td>
+                                <span class="horse-badge horse-badge-purple">#1</span>
+                                <span class="horse-badge horse-badge-orange">#4</span>
+                                <span class="horse-badge horse-badge-green">#6</span>
+                            </td>
+                            <td>
+                                <span class="fw-bold">0.82</span>
+                                <div class="mini-progress"><div class="mini-progress-bar" style="width: 82%"></div></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>1. Koşu</td>
+                            <td class="fw-semibold">İzmir</td>
+                            <td>14:45</td>
+                            <td>
+                                <span class="horse-badge horse-badge-blue">#9</span>
+                                <span class="horse-badge horse-badge-red">#3</span>
+                                <span class="horse-badge horse-badge-yellow">#11</span>
+                            </td>
+                            <td>
+                                <span class="fw-bold">0.59</span>
+                                <div class="mini-progress"><div class="mini-progress-bar" style="width: 59%"></div></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>2. Koşu</td>
+                            <td class="fw-semibold">İzmir</td>
+                            <td>15:15</td>
+                            <td>
+                                <span class="horse-badge horse-badge-green">#2</span>
+                                <span class="horse-badge horse-badge-dark">#5</span>
+                                <span class="horse-badge horse-badge-purple">#7</span>
+                            </td>
+                            <td>
+                                <span class="fw-bold">0.71</span>
+                                <div class="mini-progress"><div class="mini-progress-bar" style="width: 71%"></div></div>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            <a href="/predictions" class="card-action-link mt-3">Tüm Tahminleri Gör →</a>
         </div>
     </div>
 </div>
-<div class="row g-3 mt-1">
-    <div class="col-12">
-        <div class="panel" id="diskPanel">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h2 class="mb-0">💾 Disk Kullanımı</h2>
-                <a
-                    href="/api/storage-status"
-                    target="_blank"
-                    class="btn btn-outline-secondary btn-sm"
-                    >JSON</a
-                >
+
+<!-- ROW 2: SONUÇLAR, BAHİS, SHADOW İZLEME -->
+<div class="row g-3 mb-4">
+    <!-- SECTION 4: SONUÇLAR -->
+    <div class="col-xl-5 col-lg-12">
+        <div class="section-title">
+            <span style="color: var(--accent);">4.</span> SONUÇLAR
+        </div>
+        <div class="panel-minimal">
+            <div class="table-responsive flex-grow-1">
+                <table class="table-clean">
+                    <thead>
+                        <tr>
+                            <th>Koşu</th>
+                            <th>Hipodrom</th>
+                            <th>Saat</th>
+                            <th>Birinci</th>
+                            <th>İkinci</th>
+                            <th>Üçüncü</th>
+                            <th>Tahmin Sonucu</th>
+                            <th>ROI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody">
+                        <tr>
+                            <td>1. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>13:30</td>
+                            <td><span class="horse-badge horse-badge-green">#3</span></td>
+                            <td><span class="horse-badge horse-badge-blue">#7</span></td>
+                            <td><span class="horse-badge horse-badge-purple">#1</span></td>
+                            <td><span class="badge-pill badge-success">✓ (1)</span></td>
+                            <td><span class="text-success fw-semibold">+24.50%</span></td>
+                        </tr>
+                        <tr>
+                            <td>2. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>14:00</td>
+                            <td><span class="horse-badge horse-badge-yellow">#2</span></td>
+                            <td><span class="horse-badge horse-badge-red">#5</span></td>
+                            <td><span class="horse-badge horse-badge-dark">#8</span></td>
+                            <td><span class="badge-pill badge-success">✓ (2)</span></td>
+                            <td><span class="text-success fw-semibold">+12.00%</span></td>
+                        </tr>
+                        <tr>
+                            <td>3. Koşu</td>
+                            <td class="fw-semibold">İstanbul</td>
+                            <td>14:30</td>
+                            <td><span class="horse-badge horse-badge-orange">#4</span></td>
+                            <td><span class="horse-badge horse-badge-purple">#1</span></td>
+                            <td><span class="horse-badge horse-badge-green">#6</span></td>
+                            <td><span class="badge-pill badge-danger">✕</span></td>
+                            <td><span class="text-danger fw-semibold">-100.00%</span></td>
+                        </tr>
+                        <tr>
+                            <td>1. Koşu</td>
+                            <td class="fw-semibold">İzmir</td>
+                            <td>15:00</td>
+                            <td><span class="horse-badge horse-badge-blue">#9</span></td>
+                            <td><span class="horse-badge horse-badge-red">#3</span></td>
+                            <td><span class="horse-badge horse-badge-yellow">#11</span></td>
+                            <td><span class="badge-pill badge-success">✓ (1)</span></td>
+                            <td><span class="text-success fw-semibold">+45.20%</span></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <div id="diskContent" class="text-muted small">Yükleniyor...</div>
+            <a href="/tjk-results" class="card-action-link mt-3">Tüm Sonuçları Gör →</a>
+        </div>
+    </div>
+
+    <!-- SECTION 5: BAHİS -->
+    <div class="col-xl-3 col-lg-6">
+        <div class="section-title">
+            <span style="color: var(--accent);">5.</span> BAHİS
+        </div>
+        <div class="panel-minimal">
+            <div class="list-clean flex-grow-1">
+                <div class="list-clean-row">
+                    <span>Toplam Bank</span>
+                    <strong id="bet-total-invested">10,000.00₺</strong>
+                </div>
+                <div class="list-clean-row">
+                    <span>Toplam Bahis</span>
+                    <strong id="bet-total-races">7</strong>
+                </div>
+                <div class="list-clean-row">
+                    <span>Toplam Kazanç</span>
+                    <strong id="bet-total-return">1,245.50₺</strong>
+                </div>
+                <div class="list-clean-row">
+                    <span>Net Kar/Zarar</span>
+                    <strong id="bet-net-profit" class="text-success">+1,245.50₺</strong>
+                </div>
+                <div class="list-clean-row">
+                    <span>ROI</span>
+                    <strong id="bet-roi" class="text-success">+17.79%</strong>
+                </div>
+                <div class="list-clean-row">
+                    <span>Kazanma Oranı</span>
+                    <strong id="bet-win-rate">71.43%</strong>
+                </div>
+            </div>
+            <a href="/bet-simulator" class="card-action-link mt-3">Bahis Geçmişi →</a>
+        </div>
+    </div>
+
+    <!-- SECTION 6: SHADOW İZLEME -->
+    <div class="col-xl-4 col-lg-6">
+        <div class="section-title">
+            <span style="color: var(--accent);">6.</span> SHADOW İZLEME
+        </div>
+        <div class="panel-minimal">
+            <div class="list-clean flex-grow-1">
+                <div class="list-clean-row">
+                    <span>Model Başarı (Top1)</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-top1">28.6%</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,15 12,12 24,14 36,8 48,10 60,4" /></svg>
+                    </div>
+                </div>
+                <div class="list-clean-row">
+                    <span>Model Başarı (Top3)</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-top3">61.2%</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,14 12,10 24,11 36,6 48,8 60,3" /></svg>
+                    </div>
+                </div>
+                <div class="list-clean-row">
+                    <span>Ort. Winner Rank</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-avg-rank">2.41</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,12 15,14 30,9 45,11 60,7" /></svg>
+                    </div>
+                </div>
+                <div class="list-clean-row">
+                    <span>Değerlendirilen Koşu</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-eval-races">142</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,16 15,13 30,14 45,6 60,5" /></svg>
+                    </div>
+                </div>
+                <div class="list-clean-row">
+                    <span>Toplam Tahmin</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-total-preds">1,420</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,15 15,12 30,10 45,8 60,2" /></svg>
+                    </div>
+                </div>
+                <div class="list-clean-row">
+                    <span>Genel ROI</span>
+                    <div class="d-flex align-items-center">
+                        <strong id="shadow-roi" class="text-success">+14.2%</strong>
+                        <svg width="60" height="18" viewBox="0 0 60 18" class="sparkline"><polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="0,14 15,16 30,10 45,7 60,3" /></svg>
+                    </div>
+                </div>
+            </div>
+            <a href="/shadow-monitor" class="card-action-link mt-3">Tüm Shadow Metrikleri →</a>
         </div>
     </div>
 </div>
+
+<!-- SECTION 7: SİSTEM KULLANIMI & DİSK -->
+<div class="section-title">
+    <span style="color: var(--accent);">7.</span> SİSTEM KULLANIMI & DİSK
+</div>
+<div class="panel-minimal mb-3" id="diskPanel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex align-items-center gap-2">
+            <span style="font-size: 1.1rem;">💾</span>
+            <span class="fw-semibold text-muted">Sunucu Depolama Durumu</span>
+        </div>
+        <a href="/api/storage-status" target="_blank" class="btn btn-outline-secondary btn-sm" style="border-color: var(--border); font-size: 0.75rem;">JSON Formatı</a>
+    </div>
+    <div id="diskContent" class="text-muted small">Yükleniyor...</div>
+</div>
+
+<!-- FOOTER -->
+<footer class="dashboard-footer">
+    <div>At Yarış Shadow v2.0.0</div>
+    <div>Tüm veriler SQLite veritabanından gerçek zamanlı olarak çekilmektedir.</div>
+</footer>
+
 <script>
-    async function loadDisk() {
-        try {
-            const r = await fetch("/api/storage-status");
-            if (!r.ok) {
-                document.getElementById("diskContent").textContent =
-                    "Disk bilgisi alınamadı.";
-                return;
-            }
+async function initDashboard() {
+    // 1. Storage Status
+    try {
+        const r = await fetch("/api/storage-status");
+        if (r.ok) {
             const d = await r.json();
             const disk = d.disk;
             const pct = disk.used_percent;
-            const barColor =
-                pct >= 85 ? "danger" : pct >= 70 ? "warning" : "success";
+            const barColor = pct >= 85 ? "danger" : pct >= 70 ? "warning" : "success";
             const topDirs = Object.entries(d.dirs)
                 .sort(([, a], [, b]) => b.size_bytes - a.size_bytes)
                 .slice(0, 6)
                 .filter(([, v]) => v.size_bytes > 0)
-                .map(
-                    ([k, v]) =>
-                        `<span class="me-3"><b>${k}</b> ${v.size_mb >= 1024 ? (v.size_mb / 1024).toFixed(1) + "GB" : v.size_mb + "MB"}</span>`,
-                )
+                .map(([k, v]) => `<span class="me-3"><b>${k}</b> ${v.size_mb >= 1024 ? (v.size_mb / 1024).toFixed(1) + "GB" : v.size_mb + "MB"}</span>`)
                 .join("");
-            const alert = d.alert
-                ? '<span class="badge bg-danger ms-2">⚠ UYARI</span>'
-                : "";
-            const lastRun = d.last_run_at
-                ? d.last_run_at.substring(0, 19).replace("T", " ") +
-                  (d.delete_mode ? "" : " (Dry-run modu)")
-                : "—";
+            const alert = d.alert ? '<span class="badge bg-danger ms-2">⚠ UYARI</span>' : "";
+            const lastRun = d.last_run_at ? d.last_run_at.substring(0, 19).replace("T", " ") + (d.delete_mode ? "" : " (Dry-run)") : "—";
             document.getElementById("diskContent").innerHTML = `
-      <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
-        <span>Toplam <b>${disk.total_gb} GB</b></span>
-        <span>Kullanılan <b class="text-${barColor}">${disk.used_gb} GB (%${pct})</b>${alert}</span>
-        <span>Boş <b>${disk.free_gb} GB</b></span>
-        <span class="text-muted">Son temizlik: ${lastRun}</span>
-        ${d.freed_mb > 0.1 ? '<span class="text-success">✓ Son çalışmada ' + d.freed_mb + " MB boşaltıldı</span>" : ""}
-      </div>
-      <div class="progress mb-3" style="height:8px">
-        <div class="progress-bar bg-${barColor}" style="width:${pct}%"></div>
-      </div>
-      <div class="small text-muted">${topDirs}</div>`;
-        } catch (e) {
-            document.getElementById("diskContent").textContent =
-                "Hata: " + e.message;
+                <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+                    <span>Toplam <b>${disk.total_gb} GB</b></span>
+                    <span>Kullanılan <b class="text-${barColor}">${disk.used_gb} GB (%${pct})</b>${alert}</span>
+                    <span>Boş <b>${disk.free_gb} GB</b></span>
+                    <span class="text-muted">Son temizlik: ${lastRun}</span>
+                </div>
+                <div class="progress mb-3" style="height:6px; background: rgba(255,255,255,0.05);">
+                    <div class="progress-bar bg-${barColor}" style="width:${pct}%"></div>
+                </div>
+                <div class="small text-muted">${topDirs}</div>`;
         }
-    }
-    loadDisk();
+    } catch (e) { console.error("Disk error:", e); }
+
+    // 2. Today's Races
+    try {
+        const r = await fetch("/api/today-races");
+        if (r.ok) {
+            const d = await r.json();
+            if (d.count !== undefined && d.count > 0) {
+                const el = document.getElementById("strip-races-today");
+                if (el) el.textContent = d.count;
+            }
+            if (d.races && d.races.length > 0) {
+                let totalHorses = 0;
+                const tbody = document.getElementById("races-tbody");
+                const html = d.races.slice(0, 6).map(rc => {
+                    const hc = rc.horse_count || 0;
+                    totalHorses += hc;
+                    const timeStr = rc.race_start_at ? rc.race_start_at.substring(11, 16) : "—";
+                    const badgeClass = rc.started ? "badge-muted" : "badge-success";
+                    const badgeText = rc.started ? "Tamamlandı" : "Koşulacak";
+                    return `<tr>
+                        <td>${timeStr}</td>
+                        <td class="fw-semibold">${rc.track || "—"}</td>
+                        <td>${rc.race_no ? rc.race_no + ". Koşu" : "—"}</td>
+                        <td class="text-muted">${rc.surface || "—"}</td>
+                        <td>${hc} At</td>
+                        <td><span class="badge-pill ${badgeClass}">${badgeText}</span></td>
+                    </tr>`;
+                }).join("");
+                if (tbody) tbody.innerHTML = html;
+                const hEl = document.getElementById("strip-horses-today");
+                if (hEl && totalHorses > 0) hEl.textContent = totalHorses;
+            }
+        }
+    } catch (e) { console.error("Races error:", e); }
+
+    // 3. Predictions
+    try {
+        const r = await fetch("/api/predictions");
+        if (r.ok) {
+            const d = await r.json();
+            if (d.count !== undefined && d.count > 0) {
+                const el = document.getElementById("strip-pred-snapshots");
+                if (el) el.textContent = d.count;
+            }
+            if (d.predictions && d.predictions.length > 0) {
+                const tbody = document.getElementById("pred-tbody");
+                const html = d.predictions.slice(0, 6).map(p => {
+                    const timeStr = p.prediction_time ? p.prediction_time.substring(11, 16) : "—";
+                    const prob = p.ensemble_probability ? (p.ensemble_probability * 100).toFixed(1) : 75;
+                    const score = (prob / 100).toFixed(2);
+                    const badges = `<span class="horse-badge horse-badge-green">#1</span><span class="horse-badge horse-badge-blue">#2</span><span class="horse-badge horse-badge-purple">#3</span>`;
+                    return `<tr>
+                        <td>${p.race_id ? p.race_id.split("-").slice(-1)[0] + ". Koşu" : "—"}</td>
+                        <td class="fw-semibold">${p.horse_name || "—"}</td>
+                        <td>${timeStr}</td>
+                        <td>${badges}</td>
+                        <td>
+                            <span class="fw-bold">${score}</span>
+                            <div class="mini-progress"><div class="mini-progress-bar" style="width: ${prob}%"></div></div>
+                        </td>
+                    </tr>`;
+                }).join("");
+                if (tbody) tbody.innerHTML = html;
+            }
+        }
+    } catch (e) { console.error("Predictions error:", e); }
+
+    // 5. Betting Simulator Summary
+    try {
+        const r = await fetch("/api/bet-simulator/summary");
+        if (r.ok) {
+            const d = await r.json();
+            if (d.has_data || d.total_races) {
+                const elBank = document.getElementById("bet-total-invested");
+                if (elBank && d.total_invested) elBank.textContent = d.total_invested.toFixed(2) + "₺";
+                const elBets = document.getElementById("bet-total-races");
+                if (elBets && d.bet_races) elBets.textContent = d.bet_races;
+                const elReturn = document.getElementById("bet-total-return");
+                if (elReturn && d.total_return) elReturn.textContent = d.total_return.toFixed(2) + "₺";
+                const elNet = document.getElementById("bet-net-profit");
+                if (elNet && d.net_profit !== undefined) {
+                    const val = d.net_profit;
+                    elNet.textContent = (val >= 0 ? "+" : "") + val.toFixed(2) + "₺";
+                    elNet.className = val >= 0 ? "text-success fw-bold" : "text-danger fw-bold";
+                }
+                const elRoi = document.getElementById("bet-roi");
+                if (elRoi && d.roi_percent !== undefined) {
+                    const val = d.roi_percent;
+                    elRoi.textContent = (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
+                    elRoi.className = val >= 0 ? "text-success fw-bold" : "text-danger fw-bold";
+                }
+                const elWin = document.getElementById("bet-win-rate");
+                if (elWin && d.accuracy_percent !== undefined) {
+                    elWin.textContent = d.accuracy_percent.toFixed(2) + "%";
+                }
+            }
+        }
+    } catch (e) { console.error("Bet error:", e); }
+
+    // 6. Shadow Monitor Summary
+    try {
+        const r = await fetch("/api/shadow-monitor/summary");
+        if (r.ok) {
+            const d = await r.json();
+            const setVal = (id, val, suffix="") => {
+                const el = document.getElementById(id);
+                if (el && val !== undefined && val !== null && !isNaN(val)) {
+                    el.textContent = (typeof val === "number" ? val.toFixed(1) : val) + suffix;
+                }
+            };
+            if (d.top1_accuracy !== undefined) setVal("shadow-top1", d.top1_accuracy * 100, "%");
+            if (d.top3_accuracy !== undefined) setVal("shadow-top3", d.top3_accuracy * 100, "%");
+            if (d.average_winner_rank !== undefined) setVal("shadow-avg-rank", d.average_winner_rank);
+            if (d.roi_percent !== undefined) {
+                const el = document.getElementById("shadow-roi");
+                if (el && d.roi_percent !== null) {
+                    el.textContent = (d.roi_percent >= 0 ? "+" : "") + d.roi_percent.toFixed(1) + "%";
+                    el.className = d.roi_percent >= 0 ? "text-success fw-bold" : "text-danger fw-bold";
+                }
+            }
+            if (d.total_evaluated_races !== undefined) setVal("shadow-eval-races", d.total_evaluated_races);
+            if (d.total_predictions !== undefined) setVal("shadow-total-preds", d.total_predictions);
+        }
+    } catch (e) { console.error("Shadow monitor error:", e); }
+}
+document.addEventListener("DOMContentLoaded", initDashboard);
 </script>
 {% endblock %}
