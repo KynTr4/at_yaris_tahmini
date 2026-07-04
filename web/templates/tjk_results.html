@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}TJK Canlı Sonuçlar{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0">🏇 TJK Günlük Sonuçlar &amp; Tahmin Karşılaştırması</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <input type="date" id="dateInput" class="form-control form-control-sm" style="width:160px"
+           value="{{ selected_date }}">
+    <select id="citySelect" class="form-select form-select-sm" style="width:160px">
+      <option value="">Tüm Şehirler</option>
+      <option value="İstanbul">İstanbul</option>
+      <option value="İzmir">İzmir</option>
+      <option value="Ankara">Ankara</option>
+      <option value="Adana">Adana</option>
+      <option value="Antalya">Antalya</option>
+      <option value="Bursa">Bursa</option>
+      <option value="Diyarbakır">Diyarbakır</option>
+      <option value="Elazığ">Elazığ</option>
+      <option value="Kocaeli">Kocaeli</option>
+      <option value="Şanlıurfa">Şanlıurfa</option>
+    </select>
+    <button class="btn btn-warning btn-sm" onclick="loadResults()">Getir</button>
+    <span id="spinner" class="spinner-border spinner-border-sm text-warning d-none"></span>
+  </div>
+</div>
+
+<!-- Özet kutusu -->
+<div id="summaryBox" class="d-none mb-4"></div>
+
+<!-- Sonuç alanı -->
+<div id="resultsArea"></div>
+
+<script>
+const CITY_COLORS = {
+  "İstanbul": "primary", "İzmir": "info", "Ankara": "danger",
+  "Adana": "warning", "Antalya": "success", "Bursa": "secondary",
+  "Diyarbakır": "dark", "Elazığ": "light", "Kocaeli": "primary",
+  "Şanlıurfa": "warning"
+};
+
+function buildSummary(data) {
+  const s = data.summary;
+  if (!s || s.total_races === 0) return "";
+  const top1Pct = (s.top1_rate * 100).toFixed(1);
+  const top3Pct = (s.top3_rate * 100).toFixed(1);
+  const badgeTop1 = s.top1_rate >= 0.3 ? "success" : s.top1_rate >= 0.2 ? "warning" : "danger";
+  const badgeTop3 = s.top3_rate >= 0.5 ? "success" : s.top3_rate >= 0.3 ? "warning" : "danger";
+  return `
+    <div class="row g-3">
+      <div class="col-md-3 col-6">
+        <div class="card text-center border-secondary">
+          <div class="card-body py-2">
+            <div class="fs-2 fw-bold">${s.total_races}</div>
+            <div class="text-muted small">Tamamlanan Koşu</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card text-center border-${badgeTop1}">
+          <div class="card-body py-2">
+            <div class="fs-2 fw-bold text-${badgeTop1}">${s.top1_hits} / ${s.total_races}</div>
+            <div class="text-muted small">1. Tahmin Doğru (%${top1Pct})</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card text-center border-${badgeTop3}">
+          <div class="card-body py-2">
+            <div class="fs-2 fw-bold text-${badgeTop3}">${s.top3_hits} / ${s.total_races}</div>
+            <div class="text-muted small">Top-3 Doğru (%${top3Pct})</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card text-center border-secondary">
+          <div class="card-body py-2">
+            <div class="fs-5 fw-bold text-muted">${data.fetched_at ? data.fetched_at.substring(11,19) + " UTC" : ""}</div>
+            <div class="text-muted small">Veri Zamanı</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildRace(race, city) {
+  const color = CITY_COLORS[city] || "secondary";
+  const resultOk = race.result_available;
+  let rows = "";
+
+  // Horses sıralama: önce finish_pos olanlar, sonra null
+  const horses = [...race.horses].sort((a, b) => {
+    const ap = a.finish_pos ?? 9999;
+    const bp = b.finish_pos ?? 9999;
+    return ap - bp;
+  });
+
+  for (const h of horses) {
+    const pos = h.finish_pos ?? "—";
+    const pRank = h.predicted_rank ?? "—";
+    const prob = h.ensemble_prob != null ? (h.ensemble_prob * 100).toFixed(1) + "%" : "—";
+
+    // Renk mantığı
+    let rowClass = "";
+    if (h.finish_pos === 1 && h.in_top3_pred) rowClass = "table-success";
+    else if (h.finish_pos === 1) rowClass = "table-danger";
+    else if (h.finish_pos != null && h.finish_pos <= 3 && h.predicted_rank === 1) rowClass = "table-warning";
+
+    // İkon
+    let icon = "";
+    if (h.finish_pos === 1) icon = "🥇";
+    else if (h.finish_pos === 2) icon = "🥈";
+    else if (h.finish_pos === 3) icon = "🥉";
+
+    const rankBadge = h.predicted_rank != null
+      ? `<span class="badge bg-${h.predicted_rank === 1 ? 'warning text-dark' : h.predicted_rank <= 3 ? 'secondary' : 'dark'}">#${pRank}</span>`
+      : '<span class="text-muted">—</span>';
+
+    rows += `<tr class="${rowClass}">
+      <td class="text-center fw-bold">${icon} ${pos}</td>
+      <td>${h.horse_name}${h.start_no ? ' <small class="text-muted">('+h.start_no+')</small>' : ''}</td>
+      <td class="text-center">${rankBadge}</td>
+      <td class="text-center">${prob}</td>
+      <td class="text-center text-muted small">${h.finish_time || '—'}</td>
+      <td class="text-center text-muted small">${h.odds || '—'} ₺</td>
+      <td class="text-center text-muted small">${h.agf || '—'}</td>
+    </tr>`;
+  }
+
+  const statusBadge = race.result_available
+    ? (race.top1_correct
+        ? '<span class="badge bg-success">✓ 1. Doğru</span>'
+        : race.top3_correct
+          ? '<span class="badge bg-warning text-dark">Top-3 ✓</span>'
+          : '<span class="badge bg-danger">Tahmin tutmadı</span>')
+    : '<span class="badge bg-secondary">Sonuç bekleniyor</span>';
+
+  return `
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center bg-${color} bg-opacity-25">
+        <span class="fw-bold">${race.race_no}. Koşu — ${race.race_time || ""}</span>
+        ${statusBadge}
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th class="text-center" style="width:70px">Derece</th>
+                <th>At İsmi</th>
+                <th class="text-center">Tahmin Sırası</th>
+                <th class="text-center">Olasılık</th>
+                <th class="text-center">Süre</th>
+                <th class="text-center">Ganyan</th>
+                <th class="text-center">AGF</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadResults() {
+  const dateVal = document.getElementById("dateInput").value;
+  const cityVal = document.getElementById("citySelect").value;
+  const spinner = document.getElementById("spinner");
+  const area = document.getElementById("resultsArea");
+  const summaryBox = document.getElementById("summaryBox");
+
+  spinner.classList.remove("d-none");
+  area.innerHTML = '<div class="text-center text-muted py-5">TJK\'dan sonuçlar çekiliyor...</div>';
+  summaryBox.classList.add("d-none");
+
+  let url = `/api/tjk-results?date=${dateVal}`;
+  if (cityVal) url += `&city=${encodeURIComponent(cityVal)}`;
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const err = await resp.json();
+      area.innerHTML = `<div class="alert alert-danger">Hata: ${err.detail || resp.statusText}</div>`;
+      return;
+    }
+    const data = await resp.json();
+
+    // Özet
+    summaryBox.innerHTML = buildSummary(data);
+    summaryBox.classList.remove("d-none");
+
+    if (!data.cities || data.cities.length === 0) {
+      area.innerHTML = `<div class="alert alert-warning">Bu tarih için sonuç bulunamadı (${dateVal}).</div>`;
+      return;
+    }
+
+    let html = "";
+    for (const cityData of data.cities) {
+      html += `<h5 class="mt-4 mb-2">🏟️ ${cityData.city}</h5>`;
+      for (const race of cityData.races) {
+        html += buildRace(race, cityData.city);
+      }
+    }
+    area.innerHTML = html;
+  } catch (e) {
+    area.innerHTML = `<div class="alert alert-danger">Bağlantı hatası: ${e.message}</div>`;
+  } finally {
+    spinner.classList.add("d-none");
+  }
+}
+
+// Sayfa açılışında bugünün sonuçlarını getir
+document.addEventListener("DOMContentLoaded", loadResults);
+</script>
+{% endblock %}

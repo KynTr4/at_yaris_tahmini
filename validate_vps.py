@@ -1,11 +1,5 @@
-import paramiko
-import sys
 import datetime
-import os
-
-VPS_HOST = "5.175.136.118"
-VPS_USER = "root"
-VPS_PASSWORD = "!AhXHA9YHWg4Fv9"
+from vps_ssh import connect_vps
 
 def run_cmd(ssh, cmd):
     print(f"Running: {cmd}")
@@ -16,26 +10,20 @@ def run_cmd(ssh, cmd):
     return out + err
 
 def main():
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh = connect_vps()
     
     try:
-        ssh.connect(VPS_HOST, username=VPS_USER, password=VPS_PASSWORD, timeout=10)
-        
-        # Get WEB_PASSWORD from .env
-        env_content = run_cmd(ssh, "cat /opt/at_yaris_tahmini/.env | grep WEB_PASSWORD || echo 'WEB_PASSWORD=testpass'")
-        password = "testpass"
-        for line in env_content.splitlines():
-            if line.startswith("WEB_PASSWORD="):
-                password = line.split("=", 1)[1].strip().strip('"').strip("'")
-        
+        auth_prefix = (
+            "WEB_PASSWORD=$(sed -n 's/^WEB_PASSWORD=//p' "
+            "/opt/at_yaris_tahmini/.env | tail -n1); "
+        )
         commands = [
             "systemctl list-timers 'at-yaris-*'",
             "systemctl status at-yaris-web.service --no-pager",
             "systemctl status at-yaris-results-update.service --no-pager",
-            f'curl -u admin:{password} "http://127.0.0.1:8000/api/results-refresh/status?date=2026-06-28"',
-            f'curl -u admin:{password} "http://127.0.0.1:8000/api/race-day/missing-horses?date=2026-06-28"',
-            f'curl -u admin:{password} "http://127.0.0.1:8000/api/bet-simulator/summary?date=2026-06-28&model=Ensemble&stake=20"'
+            auth_prefix + 'curl -u "admin:${WEB_PASSWORD}" "http://127.0.0.1:8000/api/results-refresh/status?date=2026-06-28"',
+            auth_prefix + 'curl -u "admin:${WEB_PASSWORD}" "http://127.0.0.1:8000/api/race-day/missing-horses?date=2026-06-28"',
+            auth_prefix + 'curl -u "admin:${WEB_PASSWORD}" "http://127.0.0.1:8000/api/bet-simulator/summary?date=2026-06-28&model=Ensemble&stake=20"',
         ]
         
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

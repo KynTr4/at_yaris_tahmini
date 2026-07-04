@@ -1,28 +1,159 @@
-{% extends "base.html" %}{% block title %}Sistem Durumu{% endblock %}
-{% block content %}
+{% extends "base.html" %}{% block title %}Sistem Durumu{% endblock %} {% block
+content %}
 <div class="d-flex justify-content-between align-items-end mb-4">
-  <div><div class="eyebrow">CANLI GÖZLEM</div><h1>Shadow sistem durumu</h1></div>
-  <span class="status-pill {{ 'ok' if data.system_status == 'healthy' else 'warn' }}">{{ data.system_status|upper }}</span>
+    <div>
+        <div class="eyebrow">CANLI GÖZLEM</div>
+        <h1>Shadow sistem durumu</h1>
+    </div>
+    <span
+        class="status-pill {{ 'ok' if data.system_status == 'healthy' else 'warn' }}"
+        >{{ data.system_status|upper }}</span
+    >
 </div>
 <div class="row g-3 mb-4">
-  <div class="col-6 col-xl-3"><div class="metric"><span>Production ready</span><strong>{{ 'EVET' if data.production_ready else 'HAYIR' }}</strong></div></div>
-  <div class="col-6 col-xl-3"><div class="metric"><span>Shadow gün</span><strong>{{ data.shadow_days }}</strong></div></div>
-  <div class="col-6 col-xl-3"><div class="metric"><span>Disk kullanımı</span><strong>%{{ data.disk_used_percent }}</strong><small>{{ data.disk_free_gb }} GB boş</small></div></div>
-  <div class="col-6 col-xl-3"><div class="metric"><span>Aktif hata</span><strong>{{ data.active_errors|length }}</strong></div></div>
+    <div class="col-6 col-xl-3">
+        <div class="metric">
+            <span>Production ready</span
+            ><strong>{{ 'EVET' if data.production_ready else 'HAYIR' }}</strong>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric">
+            <span>Shadow gün</span><strong>{{ data.shadow_days }}</strong>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric">
+            <span>Disk kullanımı</span
+            ><strong>%{{ data.disk_used_percent }}</strong
+            ><small>{{ data.disk_free_gb }} GB boş</small>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric">
+            <span>Aktif hata</span
+            ><strong>{{ data.active_errors|length }}</strong>
+        </div>
+    </div>
 </div>
 <div class="row g-3">
-  <div class="col-lg-5"><div class="panel h-100"><h2>Güvenlik kapıları</h2>
-    {% for label, value in [('Leakage gate',data.leakage_gate),('Feature contract',data.feature_contract),('Snapshot coverage',data.snapshot_coverage)] %}
-    <div class="check-row"><span>{{ label }}</span><b class="{{ 'text-success' if value else 'text-danger' }}">{{ 'PASS' if value else 'FAIL' }}</b></div>{% endfor %}
-  </div></div>
-  <div class="col-lg-7"><div class="panel h-100"><h2>Son işlemler</h2>
-    <div class="table-responsive"><table class="table table-darkish mb-0"><tbody>
-      <tr><td>Daily pipeline</td><td>{{ data.last_pipeline_status or '—' }}</td><td>{{ data.last_pipeline_at or '—' }}</td></tr>
-      <tr><td>AGF update</td><td>{{ data.last_agf_status or '—' }}</td><td>{{ data.last_agf_at or '—' }}</td></tr>
-      <tr><td>Results update</td><td>{{ data.last_results_status or '—' }}</td><td>{{ data.last_results_at or '—' }}</td></tr>
-      <tr><td>Son tahmin</td><td colspan="2">{{ data.last_prediction_at or '—' }}</td></tr>
-      <tr><td>Son backup</td><td colspan="2">{{ data.last_backup_at or '—' }}</td></tr>
-    </tbody></table></div>
-  </div></div>
+    <div class="col-lg-5">
+        <div class="panel h-100">
+            <h2>Güvenlik kapıları</h2>
+            {% for label, value in [('Leakage gate',data.leakage_gate),('Feature
+            contract',data.feature_contract),('Snapshot
+            coverage',data.snapshot_coverage)] %}
+            <div class="check-row">
+                <span>{{ label }}</span
+                ><b class="{{ 'text-success' if value else 'text-danger' }}"
+                    >{{ 'PASS' if value else 'FAIL' }}</b
+                >
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="panel h-100">
+            <h2>Son işlemler</h2>
+            <div class="table-responsive">
+                <table class="table table-darkish mb-0">
+                    <tbody>
+                        <tr>
+                            <td>Daily pipeline</td>
+                            <td>{{ data.last_pipeline_status or '—' }}</td>
+                            <td>{{ data.last_pipeline_at or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>AGF update</td>
+                            <td>{{ data.last_agf_status or '—' }}</td>
+                            <td>{{ data.last_agf_at or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>Results update</td>
+                            <td>{{ data.last_results_status or '—' }}</td>
+                            <td>{{ data.last_results_at or '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>Son tahmin</td>
+                            <td colspan="2">
+                                {{ data.last_prediction_at or '—' }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Son backup</td>
+                            <td colspan="2">
+                                {{ data.last_backup_at or '—' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
+<div class="row g-3 mt-1">
+    <div class="col-12">
+        <div class="panel" id="diskPanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="mb-0">💾 Disk Kullanımı</h2>
+                <a
+                    href="/api/storage-status"
+                    target="_blank"
+                    class="btn btn-outline-secondary btn-sm"
+                    >JSON</a
+                >
+            </div>
+            <div id="diskContent" class="text-muted small">Yükleniyor...</div>
+        </div>
+    </div>
+</div>
+<script>
+    async function loadDisk() {
+        try {
+            const r = await fetch("/api/storage-status");
+            if (!r.ok) {
+                document.getElementById("diskContent").textContent =
+                    "Disk bilgisi alınamadı.";
+                return;
+            }
+            const d = await r.json();
+            const disk = d.disk;
+            const pct = disk.used_percent;
+            const barColor =
+                pct >= 85 ? "danger" : pct >= 70 ? "warning" : "success";
+            const topDirs = Object.entries(d.dirs)
+                .sort(([, a], [, b]) => b.size_bytes - a.size_bytes)
+                .slice(0, 6)
+                .filter(([, v]) => v.size_bytes > 0)
+                .map(
+                    ([k, v]) =>
+                        `<span class="me-3"><b>${k}</b> ${v.size_mb >= 1024 ? (v.size_mb / 1024).toFixed(1) + "GB" : v.size_mb + "MB"}</span>`,
+                )
+                .join("");
+            const alert = d.alert
+                ? '<span class="badge bg-danger ms-2">⚠ UYARI</span>'
+                : "";
+            const lastRun = d.last_run_at
+                ? d.last_run_at.substring(0, 19).replace("T", " ") +
+                  (d.delete_mode ? "" : " (Dry-run modu)")
+                : "—";
+            document.getElementById("diskContent").innerHTML = `
+      <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+        <span>Toplam <b>${disk.total_gb} GB</b></span>
+        <span>Kullanılan <b class="text-${barColor}">${disk.used_gb} GB (%${pct})</b>${alert}</span>
+        <span>Boş <b>${disk.free_gb} GB</b></span>
+        <span class="text-muted">Son temizlik: ${lastRun}</span>
+        ${d.freed_mb > 0.1 ? '<span class="text-success">✓ Son çalışmada ' + d.freed_mb + " MB boşaltıldı</span>" : ""}
+      </div>
+      <div class="progress mb-3" style="height:8px">
+        <div class="progress-bar bg-${barColor}" style="width:${pct}%"></div>
+      </div>
+      <div class="small text-muted">${topDirs}</div>`;
+        } catch (e) {
+            document.getElementById("diskContent").textContent =
+                "Hata: " + e.message;
+        }
+    }
+    loadDisk();
+</script>
 {% endblock %}

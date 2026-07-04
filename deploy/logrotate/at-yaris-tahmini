@@ -1,9 +1,15 @@
+# AT Yaris Shadow — log rotation policy
+# Dönem: günlük | Saklama: 30 gün sıkıştırılmış | İlk sıkıştırma: 1 gün sonra
 /var/log/at_yaris_tahmini/*.log /var/log/at_yaris_tahmini/*.err.log {
     daily
-    rotate 7
+    rotate 30
     compress
     delaycompress
     missingok
     notifempty
     copytruncate
+    dateext
+    dateformat -%Y%m%d
+    olddir /var/log/at_yaris_tahmini/archive
+    createolddir 755 at_yaris at_yaris
 }

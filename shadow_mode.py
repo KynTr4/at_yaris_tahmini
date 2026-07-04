@@ -28,8 +28,8 @@ from race_scope import is_turkey_track
 ROOT = PROJECT_ROOT
 DB = DB_PATH
 FEATURES = OUTPUT_DIR / "asof_features.parquet"
-SHADOW_CSV = OUTPUT_DIR / "shadow_predictions.csv"
-HISTORY_CSV = OUTPUT_DIR / "prediction_history.csv"
+# SHADOW_CSV = OUTPUT_DIR / "shadow_predictions.csv"  # CSV output removed; SQLite only
+# HISTORY_CSV = OUTPUT_DIR / "prediction_history.csv"  # CSV output removed; SQLite only
 MODEL_PATHS = {
     "logistic": MODELS_DIR / "benter_baseline_logistic.pkl",
     "catboost": MODELS_DIR / "benter_baseline_catboost.pkl",
@@ -339,20 +339,8 @@ def archive_predictions(
 
 
 def export_prediction_history(db_path: str | Path = DB) -> None:
-    connection = sqlite3.connect(str(db_path), timeout=60)
-    try:
-        history = pd.read_sql_query(
-            """SELECT p.*,r.finish_position,r.winner,r.official_odds,
-                      r.official_time,r.payout,r.matched_at
-               FROM prediction_snapshots p
-               LEFT JOIN prediction_results r USING(prediction_id)
-               ORDER BY p.prediction_time,p.race_id,p.predicted_rank""",
-            connection,
-        )
-    finally:
-        connection.close()
-    HISTORY_CSV.parent.mkdir(exist_ok=True)
-    history.to_csv(HISTORY_CSV, index=False, encoding="utf-8")
+    """No-op: CSV export removed; history lives in prediction_snapshots SQLite table."""
+    pass
 
 
 def eligible_today(frame: pd.DataFrame, day: str, now: pd.Timestamp) -> pd.DataFrame:
@@ -419,22 +407,6 @@ def main() -> int:
             )
             return 0
     if targets.empty:
-        SHADOW_CSV.parent.mkdir(exist_ok=True)
-        pd.DataFrame(
-            columns=[
-                "prediction_id",
-                "race_id",
-                "horse_id",
-                "prediction_time",
-                "race_start_at",
-                "logistic_probability",
-                "catboost_probability",
-                "xgboost_probability",
-                "ensemble_probability",
-                "predicted_rank",
-                "feature_hash",
-            ]
-        ).to_csv(SHADOW_CSV, index=False)
         export_prediction_history()
         print({"mode": "shadow_mode", "status": "no_future_races", "rows": 0})
         return 0
@@ -447,7 +419,6 @@ def main() -> int:
     if scored.empty:
         raise RuntimeError("All races crossed race_start_at during model inference")
     archive = archive_predictions(scored, prediction_time=prediction_time)
-    archive.to_csv(SHADOW_CSV, index=False, encoding="utf-8")
     export_prediction_history()
     print(
         {

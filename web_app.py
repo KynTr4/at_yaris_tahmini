@@ -1,4 +1,5 @@
 """Read-only FastAPI dashboard for the shadow prediction pipeline."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.templating import Jinja2Templates
 
 from app_config import (
@@ -32,73 +39,152 @@ from app_config import (
     LOG_DIR,
     PROJECT_ROOT,
     REPORTS_DIR,
+    TZ_NAME,
     WEB_HOST,
     WEB_PASSWORD,
     WEB_PORT,
     WEB_USERNAME,
-    TZ_NAME,
 )
-from performance_queries import (
-    chart_data as query_performance_chart,
-    history as query_performance_history,
-    model_comparison as query_performance_models,
-    normalize_filters,
-    race_filters as query_performance_races,
-    summary as query_performance_summary,
+from bet_simulator_queries import (
+    export_rows as query_bet_export,
+)
+from bet_simulator_queries import (
+    history as query_bet_history,
+)
+from bet_simulator_queries import (
+    model_comparison as query_bet_model_comparison,
+)
+from bet_simulator_queries import (
+    normalize_bet_filters,
+)
+from bet_simulator_queries import (
+    summary as query_bet_summary,
 )
 from diagnostics_queries import (
     export_rows as query_diagnostics_export,
+)
+from diagnostics_queries import (
     extremes as query_diagnostics_extremes,
+)
+from diagnostics_queries import (
     feature_contribution_status,
+)
+from diagnostics_queries import (
     filter_options as query_diagnostics_filters,
+)
+from diagnostics_queries import (
     group_performance as query_diagnostics_groups,
+)
+from diagnostics_queries import (
     normalize_filters as normalize_diagnostics_filters,
-    races as query_diagnostics_races,
+)
+from diagnostics_queries import (
     race_detail as query_diagnostics_race_detail,
+)
+from diagnostics_queries import (
+    races as query_diagnostics_races,
+)
+from diagnostics_queries import (
     summary as query_diagnostics_summary,
+)
+from diagnostics_queries import (
     winner_ranks as query_diagnostics_winner_ranks,
 )
-from results_coverage import build_results_coverage
-from race_day_queries import missing_horses, race_day_performance, race_day_summary, race_day_view, validate_date
-from race_scope import configure_sqlite, normalize_country, track_key
 from live_results_status import read_status_file, verified_status
-from bet_simulator_queries import (
-    export_rows as query_bet_export, history as query_bet_history,
-    model_comparison as query_bet_model_comparison,
-    normalize_bet_filters, summary as query_bet_summary,
+from performance_queries import (
+    chart_data as query_performance_chart,
 )
+from performance_queries import (
+    history as query_performance_history,
+)
+from performance_queries import (
+    model_comparison as query_performance_models,
+)
+from performance_queries import (
+    normalize_filters,
+)
+from performance_queries import (
+    race_filters as query_performance_races,
+)
+from performance_queries import (
+    summary as query_performance_summary,
+)
+from race_day_queries import (
+    missing_horses,
+    race_day_performance,
+    race_day_summary,
+    race_day_view,
+    validate_date,
+)
+from race_scope import configure_sqlite, normalize_country, track_key
+from results_coverage import build_results_coverage
 from shadow_monitor_queries import (
     export_csv as query_shadow_export,
+)
+from shadow_monitor_queries import (
     health as query_shadow_health,
+)
+from shadow_monitor_queries import (
     models as query_shadow_models,
+)
+from shadow_monitor_queries import (
     normalize_shadow_filters,
+)
+from shadow_monitor_queries import (
     segments as query_shadow_segments,
+)
+from shadow_monitor_queries import (
     summary as query_shadow_summary,
+)
+from shadow_monitor_queries import (
     trends as query_shadow_trends,
 )
+from tjk_scraper import TURKISH_CITIES, compare_predictions_with_tjk
 
 WEB_ROOT = PROJECT_ROOT / "web"
 TEMPLATES = Jinja2Templates(directory=str(WEB_ROOT / "templates"))
 ALLOWED_REPORTS = (
-    "model_health_dashboard.md", "daily_shadow_report.md", "live_accuracy_report.md",
-    "model_drift_report.md", "feature_drift_report.md", "calibration_monitor.md",
-    "live_roi_report.md", "leakage_gate_v2.md", "vps_healthcheck.md",
-    "results_coverage_latest.md", "izmir_results_debug.md",
+    "model_health_dashboard.md",
+    "daily_shadow_report.md",
+    "live_accuracy_report.md",
+    "model_drift_report.md",
+    "feature_drift_report.md",
+    "calibration_monitor.md",
+    "live_roi_report.md",
+    "leakage_gate_v2.md",
+    "vps_healthcheck.md",
+    "results_coverage_latest.md",
+    "izmir_results_debug.md",
     "race_day_dashboard_validation.md",
     "model_diagnostics_validation.md",
     "turkey_live_results_validation.md",
     "race_diagnostics_explainability_validation.md",
 )
 ALLOWED_LOGS = (
-    "daily.log", "daily.err.log", "agf.log", "agf.err.log",
-    "results.log", "results.err.log", "web.log", "web.err.log",
-    "race-freeze.log", "race-freeze.err.log",
+    "daily.log",
+    "daily.err.log",
+    "agf.log",
+    "agf.err.log",
+    "results.log",
+    "results.err.log",
+    "web.log",
+    "web.err.log",
+    "race-freeze.log",
+    "race-freeze.err.log",
+    "storage-manager.log",
+    "storage-manager.err.log",
 )
 SYSTEMD_UNITS = (
-    "at-yaris-web.service", "at-yaris-daily.timer", "at-yaris-agf-update.timer",
-    "at-yaris-results-update.timer", "at-yaris-backup.timer",
+    "at-yaris-web.service",
+    "at-yaris-daily.timer",
+    "at-yaris-agf-update.timer",
+    "at-yaris-results-update.timer",
+    "at-yaris-backup.timer",
     "at-yaris-live-results.timer",
     "at-yaris-race-freeze.timer",
+    "at-yaris-cleanup.timer",
+    "at-yaris-storage-manager.service",
+    "at-yaris-storage-manager.timer",
 )
 _PERFORMANCE_CACHE: dict[tuple[Any, ...], tuple[float, Any]] = {}
 _PERFORMANCE_CACHE_LOCK = threading.Lock()
@@ -124,9 +210,9 @@ async def basic_auth(request: Request, call_next):
         try:
             decoded = base64.b64decode(header[6:], validate=True).decode("utf-8")
             username, password = decoded.split(":", 1)
-            authenticated = secrets.compare_digest(username, WEB_USERNAME) and secrets.compare_digest(
-                password, WEB_PASSWORD
-            )
+            authenticated = secrets.compare_digest(
+                username, WEB_USERNAME
+            ) and secrets.compare_digest(password, WEB_PASSWORD)
         except (ValueError, UnicodeDecodeError):
             authenticated = False
     if not authenticated:
@@ -160,7 +246,9 @@ async def health():
 
 
 def readonly_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True, timeout=10)
+    connection = sqlite3.connect(
+        f"file:{DB_PATH.as_posix()}?mode=ro", uri=True, timeout=10
+    )
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
     configure_sqlite(connection)
@@ -189,7 +277,9 @@ def _report_pass(name: str, positive: str = "PASS") -> bool:
     path = REPORTS_DIR / name
     if not path.is_file():
         return False
-    return positive.lower() in path.read_text(encoding="utf-8", errors="replace").lower()
+    return (
+        positive.lower() in path.read_text(encoding="utf-8", errors="replace").lower()
+    )
 
 
 def systemd_status() -> dict[str, str]:
@@ -198,7 +288,11 @@ def systemd_status() -> dict[str, str]:
     result = {}
     for unit in SYSTEMD_UNITS:
         process = subprocess.run(
-            ["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5, check=False
+            ["systemctl", "is-active", unit],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         result[unit] = process.stdout.strip() or "unknown"
     return result
@@ -209,31 +303,51 @@ def dashboard_status() -> dict[str, Any]:
         monitor = connection.execute(
             """SELECT * FROM shadow_monitoring_runs ORDER BY run_at DESC LIMIT 1"""
         ).fetchone()
-        shadow_days = connection.execute("SELECT COUNT(DISTINCT shadow_date) FROM shadow_monitoring_runs").fetchone()[0]
-        last_prediction = connection.execute("SELECT MAX(prediction_time) FROM prediction_snapshots").fetchone()[0]
+        shadow_days = connection.execute(
+            "SELECT COUNT(DISTINCT shadow_date) FROM shadow_monitoring_runs"
+        ).fetchone()[0]
+        last_prediction = connection.execute(
+            "SELECT MAX(prediction_time) FROM prediction_snapshots"
+        ).fetchone()[0]
     monitor = dict(monitor) if monitor else {}
     shadow_days = int(shadow_days or 0)
     daily = _latest_runner("run")
     agf = _latest_runner("agf_update")
     results = _latest_runner("results_update")
-    backups = sorted(BACKUP_DIR.glob("*/*.tar.gz"), key=lambda path: path.stat().st_mtime, reverse=True)
+    backups = sorted(
+        BACKUP_DIR.glob("*/*.tar.gz"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     usage = shutil.disk_usage(PROJECT_ROOT)
     error_logs = []
     for name in ALLOWED_LOGS:
         path = LOG_DIR / name
         if path.is_file() and path.stat().st_size:
-            tail = "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-200:])
-            if any(token in tail.lower() for token in ("error", "critical", "traceback")):
+            tail = "\n".join(
+                path.read_text(encoding="utf-8", errors="replace").splitlines()[-200:]
+            )
+            if any(
+                token in tail.lower() for token in ("error", "critical", "traceback")
+            ):
                 error_logs.append(name)
-    leakage = bool(monitor.get("leakage_gate_pass")) or _report_pass("leakage_gate_v2.md")
+    leakage = bool(monitor.get("leakage_gate_pass")) or _report_pass(
+        "leakage_gate_v2.md"
+    )
     contract = bool(monitor.get("feature_contract_pass"))
     coverage = bool(monitor.get("snapshot_coverage_pass"))
     production_ready = (
-        bool(monitor.get("production_ready")) and shadow_days >= 90
-        and leakage and contract and coverage and not error_logs
+        bool(monitor.get("production_ready"))
+        and shadow_days >= 90
+        and leakage
+        and contract
+        and coverage
+        and not error_logs
     )
     return {
-        "system_status": "healthy" if leakage and contract and coverage and not error_logs else "attention",
+        "system_status": "healthy"
+        if leakage and contract and coverage and not error_logs
+        else "attention",
         "production_ready": production_ready,
         "shadow_days": shadow_days,
         "leakage_gate": leakage,
@@ -246,7 +360,11 @@ def dashboard_status() -> dict[str, Any]:
         "last_results_at": results.get("ended_at"),
         "last_results_status": results.get("status"),
         "last_prediction_at": _iso(last_prediction),
-        "last_backup_at": datetime.fromtimestamp(backups[0].stat().st_mtime, timezone.utc).isoformat() if backups else None,
+        "last_backup_at": datetime.fromtimestamp(
+            backups[0].stat().st_mtime, timezone.utc
+        ).isoformat()
+        if backups
+        else None,
         "disk_used_percent": round((usage.used / usage.total) * 100, 1),
         "disk_free_gb": round(usage.free / 1024**3, 2),
         "active_errors": error_logs,
@@ -256,7 +374,9 @@ def dashboard_status() -> dict[str, Any]:
 
 def today_races() -> list[dict[str, Any]]:
     now = pd.Timestamp.now(tz="UTC")
-    local_date = pd.Timestamp.now(tz=os.environ.get("TZ", "Europe/Istanbul")).date().isoformat()
+    local_date = (
+        pd.Timestamp.now(tz=os.environ.get("TZ", "Europe/Istanbul")).date().isoformat()
+    )
     with readonly_connection() as connection:
         rows = connection.execute(
             """WITH latest AS (
@@ -282,14 +402,18 @@ def today_races() -> list[dict[str, Any]]:
     for row in rows:
         item = dict(row)
         count = int(item["horse_count"] or 0)
-        item["snapshot_coverage"] = round(100 * int(item["covered"] or 0) / count, 1) if count else 0.0
+        item["snapshot_coverage"] = (
+            round(100 * int(item["covered"] or 0) / count, 1) if count else 0.0
+        )
         start = pd.to_datetime(item["race_start_at"], utc=True, errors="coerce")
         item["started"] = bool(not pd.isna(start) and now >= start)
         item["race_start_at"] = _iso(item["race_start_at"])
         item["last_agf_at"] = _iso(item["last_agf_at"])
         result = coverage_by_race.get(item["race_id"], {})
         item["result_status"] = result.get("status", "Sonuç bekleniyor")
-        item["result_missing_reason"] = result.get("missing_reason", "source_not_published")
+        item["result_missing_reason"] = result.get(
+            "missing_reason", "source_not_published"
+        )
         item["tjk_id_missing_horse_count"] = result.get("tjk_id_missing_horse_count", 0)
         item["source_not_published_count"] = result.get("source_not_published_count", 0)
         races.append(item)
@@ -328,14 +452,18 @@ def current_predictions() -> list[dict[str, Any]]:
     return items
 
 
-def _performance_filters(date=None, track=None, model=None, outcome="all") -> dict[str, str | None]:
+def _performance_filters(
+    date=None, track=None, model=None, outcome="all"
+) -> dict[str, str | None]:
     try:
         return normalize_filters(date=date, track=track, model=model, outcome=outcome)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _performance_cached(name: str, filters: dict[str, Any], loader, page: int | None = None):
+def _performance_cached(
+    name: str, filters: dict[str, Any], loader, page: int | None = None
+):
     key = (name, *sorted(filters.items()), page)
     now = time.monotonic()
     with _PERFORMANCE_CACHE_LOCK:
@@ -343,32 +471,54 @@ def _performance_cached(name: str, filters: dict[str, Any], loader, page: int | 
         if cached and now - cached[0] <= 300:
             return cached[1]
     with readonly_connection() as connection:
-        value = loader(connection, filters) if page is None else loader(connection, filters, page)
+        value = (
+            loader(connection, filters)
+            if page is None
+            else loader(connection, filters, page)
+        )
     with _PERFORMANCE_CACHE_LOCK:
         _PERFORMANCE_CACHE[key] = (now, value)
         if len(_PERFORMANCE_CACHE) > 256:
-            oldest = min(_PERFORMANCE_CACHE, key=lambda item: _PERFORMANCE_CACHE[item][0])
+            oldest = min(
+                _PERFORMANCE_CACHE, key=lambda item: _PERFORMANCE_CACHE[item][0]
+            )
             _PERFORMANCE_CACHE.pop(oldest, None)
     return value
 
 
-def _diagnostics_filters(date=None, track=None, model=None, race_type=None,
-                         distance=None, surface=None, field_size=None) -> dict[str, str | None]:
+def _diagnostics_filters(
+    date=None,
+    track=None,
+    model=None,
+    race_type=None,
+    distance=None,
+    surface=None,
+    field_size=None,
+) -> dict[str, str | None]:
     try:
-        return normalize_diagnostics_filters(date, track, model, race_type, distance, surface, field_size)
+        return normalize_diagnostics_filters(
+            date, track, model, race_type, distance, surface, field_size
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _race_day_date(value: str | None) -> str:
-    candidate = value or pd.Timestamp.now(tz=os.environ.get("TZ", "Europe/Istanbul")).date().isoformat()
+    candidate = (
+        value
+        or pd.Timestamp.now(tz=os.environ.get("TZ", "Europe/Istanbul"))
+        .date()
+        .isoformat()
+    )
     try:
         return validate_date(candidate)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _race_day_cached(name: str, target_date: str, track: str | None, country: str, loader):
+def _race_day_cached(
+    name: str, target_date: str, track: str | None, country: str, loader
+):
     key = (f"race_day_{name}", target_date, track, country)
     now = time.monotonic()
     with _PERFORMANCE_CACHE_LOCK:
@@ -382,7 +532,9 @@ def _race_day_cached(name: str, target_date: str, track: str | None, country: st
     return value
 
 
-def _allowed_text(directory: Path, name: str, allowlist: tuple[str, ...], lines: int | None = None) -> str:
+def _allowed_text(
+    directory: Path, name: str, allowlist: tuple[str, ...], lines: int | None = None
+) -> str:
     if name not in allowlist:
         raise HTTPException(status_code=404, detail="File is not allowed")
     path = directory / name
@@ -399,7 +551,9 @@ def static_style():
 
 @app.get("/static/live-results.js", response_class=FileResponse)
 def static_live_results():
-    return FileResponse(WEB_ROOT / "static" / "live-results.js", media_type="application/javascript")
+    return FileResponse(
+        WEB_ROOT / "static" / "live-results.js", media_type="application/javascript"
+    )
 
 
 def server_today() -> str:
@@ -417,17 +571,23 @@ def _page_date(value: str | None) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    return TEMPLATES.TemplateResponse(request, "dashboard.html", {"data": dashboard_status()})
+    return TEMPLATES.TemplateResponse(
+        request, "dashboard.html", {"data": dashboard_status()}
+    )
 
 
 @app.get("/races", response_class=HTMLResponse)
 def races_page(request: Request, date: str | None = None):
-    return TEMPLATES.TemplateResponse(request, "races.html", {"selected_date": _page_date(date)})
+    return TEMPLATES.TemplateResponse(
+        request, "races.html", {"selected_date": _page_date(date)}
+    )
 
 
 @app.get("/predictions", response_class=HTMLResponse)
 def predictions_page(request: Request):
-    return TEMPLATES.TemplateResponse(request, "predictions.html", {"predictions": current_predictions()})
+    return TEMPLATES.TemplateResponse(
+        request, "predictions.html", {"predictions": current_predictions()}
+    )
 
 
 @app.get("/performance", response_class=HTMLResponse)
@@ -446,7 +606,9 @@ def diagnostics_page(request: Request, date: str | None = None):
 
 @app.get("/diagnostics/race/{race_id}", response_class=HTMLResponse)
 def diagnostics_race_page(request: Request, race_id: str):
-    return TEMPLATES.TemplateResponse(request, "diagnostics_race.html", {"race_id": race_id})
+    return TEMPLATES.TemplateResponse(
+        request, "diagnostics_race.html", {"race_id": race_id}
+    )
 
 
 @app.get("/bet-simulator", response_class=HTMLResponse)
@@ -459,7 +621,9 @@ def bet_simulator_page(request: Request, date: str | None = None):
 @app.get("/shadow-monitor", response_class=HTMLResponse)
 def shadow_monitor_page(request: Request):
     today = server_today()
-    start = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=89)).strftime("%Y-%m-%d")
+    start = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=89)).strftime(
+        "%Y-%m-%d"
+    )
     return TEMPLATES.TemplateResponse(
         request, "shadow_monitor.html", {"date_from": start, "date_to": today}
     )
@@ -468,9 +632,13 @@ def shadow_monitor_page(request: Request):
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(request: Request, name: str | None = None):
     selected = name if name in ALLOWED_REPORTS else None
-    content = _allowed_text(REPORTS_DIR, selected, ALLOWED_REPORTS) if selected else None
+    content = (
+        _allowed_text(REPORTS_DIR, selected, ALLOWED_REPORTS) if selected else None
+    )
     return TEMPLATES.TemplateResponse(
-        request, "reports.html", {"files": ALLOWED_REPORTS, "selected": selected, "content": content}
+        request,
+        "reports.html",
+        {"files": ALLOWED_REPORTS, "selected": selected, "content": content},
     )
 
 
@@ -479,14 +647,20 @@ def logs_page(request: Request, name: str | None = None):
     selected = name if name in ALLOWED_LOGS else None
     content = _allowed_text(LOG_DIR, selected, ALLOWED_LOGS, 200) if selected else None
     return TEMPLATES.TemplateResponse(
-        request, "logs.html", {"files": ALLOWED_LOGS, "selected": selected, "content": content}
+        request,
+        "logs.html",
+        {"files": ALLOWED_LOGS, "selected": selected, "content": content},
     )
 
 
 @app.get("/api/health")
 def api_health():
     data = dashboard_status()
-    return {"status": data["system_status"], "production_ready": data["production_ready"], "checks": data}
+    return {
+        "status": data["system_status"],
+        "production_ready": data["production_ready"],
+        "checks": data,
+    }
 
 
 @app.get("/api/today-races")
@@ -497,14 +671,22 @@ def api_today_races():
 @app.get("/api/predictions")
 def api_predictions():
     predictions = current_predictions()
-    invalid = sorted({row["race_id"] for row in predictions if not row["probability_sum_valid"]})
-    return {"count": len(predictions), "invalid_probability_sum_races": invalid, "predictions": predictions}
+    invalid = sorted(
+        {row["race_id"] for row in predictions if not row["probability_sum_valid"]}
+    )
+    return {
+        "count": len(predictions),
+        "invalid_probability_sum_races": invalid,
+        "predictions": predictions,
+    }
 
 
 @app.get("/api/shadow-status")
 def api_shadow_status():
     data = dashboard_status()
-    return {key: data[key] for key in ("shadow_days", "production_ready", "latest_monitor")}
+    return {
+        key: data[key] for key in ("shadow_days", "production_ready", "latest_monitor")
+    }
 
 
 @app.get("/api/systemd-status")
@@ -513,24 +695,39 @@ def api_systemd_status():
 
 
 @app.get("/api/performance/summary")
-def api_performance_summary(date: str | None = None, track: str | None = None,
-                            model: str | None = None, outcome: str = "all", country: str = "ALL"):
+def api_performance_summary(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    outcome: str = "all",
+    country: str = "ALL",
+):
     _country(country)
     filters = _performance_filters(date, track, model, outcome)
     return _performance_cached("summary", filters, query_performance_summary)
 
 
 @app.get("/api/performance/models")
-def api_performance_models(date: str | None = None, track: str | None = None,
-                           outcome: str = "all", country: str = "ALL"):
+def api_performance_models(
+    date: str | None = None,
+    track: str | None = None,
+    outcome: str = "all",
+    country: str = "ALL",
+):
     _country(country)
     filters = _performance_filters(date, track, None, outcome)
     return {"models": _performance_cached("models", filters, query_performance_models)}
 
 
 @app.get("/api/performance/history")
-def api_performance_history(page: int = 1, date: str | None = None, track: str | None = None,
-                            model: str | None = None, outcome: str = "all", country: str = "ALL"):
+def api_performance_history(
+    page: int = 1,
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    outcome: str = "all",
+    country: str = "ALL",
+):
     _country(country)
     if page < 1:
         raise HTTPException(status_code=400, detail="page must be >= 1")
@@ -539,8 +736,13 @@ def api_performance_history(page: int = 1, date: str | None = None, track: str |
 
 
 @app.get("/api/performance/chart")
-def api_performance_chart(date: str | None = None, track: str | None = None,
-                          model: str | None = None, outcome: str = "all", country: str = "ALL"):
+def api_performance_chart(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    outcome: str = "all",
+    country: str = "ALL",
+):
     _country(country)
     filters = _performance_filters(date, track, model, outcome)
     return _performance_cached("chart", filters, query_performance_chart)
@@ -549,7 +751,9 @@ def api_performance_chart(date: str | None = None, track: str | None = None,
 @app.get("/api/performance/races")
 def api_performance_races():
     filters = _performance_filters()
-    return _performance_cached("races", filters, lambda connection, _: query_performance_races(connection))
+    return _performance_cached(
+        "races", filters, lambda connection, _: query_performance_races(connection)
+    )
 
 
 def _country(value: str | None) -> str:
@@ -563,33 +767,73 @@ def _country(value: str | None) -> str:
 def api_race_day_summary(date: str | None = None, country: str = "ALL"):
     target = _race_day_date(date)
     scope = _country(country)
-    return _race_day_cached("summary", target, None, scope,
-                            lambda connection: race_day_summary(connection, target, scope))
+    return _race_day_cached(
+        "summary",
+        target,
+        None,
+        scope,
+        lambda connection: race_day_summary(connection, target, scope),
+    )
 
 
 @app.get("/api/race-day/tracks")
 def api_race_day_tracks(date: str | None = None, country: str = "ALL"):
     target = _race_day_date(date)
     scope = _country(country)
-    view = _race_day_cached("view", target, None, scope, lambda connection: race_day_view(connection, target, scope))
-    return {"date": target, "country": scope, "count": len(view["tracks"]), "tracks": view["tracks"], "warnings": view["warnings"]}
+    view = _race_day_cached(
+        "view",
+        target,
+        None,
+        scope,
+        lambda connection: race_day_view(connection, target, scope),
+    )
+    return {
+        "date": target,
+        "country": scope,
+        "count": len(view["tracks"]),
+        "tracks": view["tracks"],
+        "warnings": view["warnings"],
+    }
 
 
 @app.get("/api/race-day/races")
-def api_race_day_races(date: str | None = None, track: str | None = None, country: str = "ALL"):
+def api_race_day_races(
+    date: str | None = None, track: str | None = None, country: str = "ALL"
+):
     target = _race_day_date(date)
     scope = _country(country)
-    view = _race_day_cached("view", target, None, scope, lambda connection: race_day_view(connection, target, scope))
-    rows = [row for row in view["races"] if not track or track_key(row["track"]) == track_key(track)]
-    return {"date": target, "country": scope, "track": track, "count": len(rows), "races": rows}
+    view = _race_day_cached(
+        "view",
+        target,
+        None,
+        scope,
+        lambda connection: race_day_view(connection, target, scope),
+    )
+    rows = [
+        row
+        for row in view["races"]
+        if not track or track_key(row["track"]) == track_key(track)
+    ]
+    return {
+        "date": target,
+        "country": scope,
+        "track": track,
+        "count": len(rows),
+        "races": rows,
+    }
 
 
 @app.get("/api/race-day/performance")
-def api_race_day_performance(date: str | None = None, track: str | None = None, country: str = "ALL"):
+def api_race_day_performance(
+    date: str | None = None, track: str | None = None, country: str = "ALL"
+):
     target = _race_day_date(date)
     scope = _country(country)
     return _race_day_cached(
-        "performance", target, track, scope,
+        "performance",
+        target,
+        track,
+        scope,
         lambda connection: race_day_performance(connection, target, track, scope),
     )
 
@@ -603,88 +847,181 @@ def api_race_day_missing_horses(date: str | None = None, track: str | None = Non
 
 
 @app.get("/api/race-day/missing-horses/export.csv")
-def api_race_day_missing_horses_export(date: str | None = None, track: str | None = None):
+def api_race_day_missing_horses_export(
+    date: str | None = None, track: str | None = None
+):
     target = _race_day_date(date)
     with readonly_connection() as connection:
         rows = missing_horses(connection, target, track)
-    fields = ["date","track","race_no","race_id","race_start_at","missing_reason",
-              "horse_id","horse_name","draw","jockey","trainer","tjk_id","missing_fields"]
-    buffer = io.StringIO(); writer = csv.DictWriter(buffer, fieldnames=fields); writer.writeheader()
+    fields = [
+        "date",
+        "track",
+        "race_no",
+        "race_id",
+        "race_start_at",
+        "missing_reason",
+        "horse_id",
+        "horse_name",
+        "draw",
+        "jockey",
+        "trainer",
+        "tjk_id",
+        "missing_fields",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields)
+    writer.writeheader()
     for row in rows:
-        item = dict(row); item["missing_fields"] = ",".join(item["missing_fields"]); writer.writerow(item)
-    return StreamingResponse(iter(["\ufeff" + buffer.getvalue()]), media_type="text/csv; charset=utf-8",
-                             headers={"Content-Disposition": f'attachment; filename="missing_horses_{target}.csv"'})
+        item = dict(row)
+        item["missing_fields"] = ",".join(item["missing_fields"])
+        writer.writerow(item)
+    return StreamingResponse(
+        iter(["\ufeff" + buffer.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="missing_horses_{target}.csv"'
+        },
+    )
 
 
 @app.get("/api/results-refresh/status")
 def api_results_refresh_status(date: str | None = None, country: str = "ALL"):
-    target = _race_day_date(date); scope = _country(country)
+    target = _race_day_date(date)
+    scope = _country(country)
     metadata = read_status_file(LOG_DIR / "live_results_status.json")
     if not metadata:
         metadata = {"status": "UNKNOWN", "warnings": ["Live refresh has not run yet"]}
-    elif metadata.get("date") not in (None, target) or metadata.get("country") not in (None, scope):
-        metadata = {"status": "UNKNOWN", "warnings": ["No live refresh has run for this date"]}
+    elif metadata.get("date") not in (None, target) or metadata.get("country") not in (
+        None,
+        scope,
+    ):
+        metadata = {
+            "status": "UNKNOWN",
+            "warnings": ["No live refresh has run for this date"],
+        }
     with readonly_connection() as connection:
         return verified_status(connection, target, scope, metadata)
 
 
-def _diagnostics_args(date=None, track=None, model=None, race_type=None,
-                      distance=None, surface=None, field_size=None):
-    return _diagnostics_filters(date, track, model, race_type, distance, surface, field_size)
+def _diagnostics_args(
+    date=None,
+    track=None,
+    model=None,
+    race_type=None,
+    distance=None,
+    surface=None,
+    field_size=None,
+):
+    return _diagnostics_filters(
+        date, track, model, race_type, distance, surface, field_size
+    )
 
 
 @app.get("/api/diagnostics/summary")
-def api_diagnostics_summary(date: str | None = None, track: str | None = None,
-                            model: str | None = None, race_type: str | None = None,
-                            distance: str | None = None, surface: str | None = None,
-                            field_size: str | None = None):
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
-    return _performance_cached("diagnostics_summary", filters, query_diagnostics_summary)
+def api_diagnostics_summary(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
+    return _performance_cached(
+        "diagnostics_summary", filters, query_diagnostics_summary
+    )
 
 
 @app.get("/api/diagnostics/races")
-def api_diagnostics_races(page: int = 1, date: str | None = None, track: str | None = None,
-                          model: str | None = None, race_type: str | None = None,
-                          distance: str | None = None, surface: str | None = None,
-                          field_size: str | None = None):
+def api_diagnostics_races(
+    page: int = 1,
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
     if page < 1:
         raise HTTPException(status_code=400, detail="page must be >= 1")
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
-    return _performance_cached("diagnostics_races", filters, query_diagnostics_races, page)
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
+    return _performance_cached(
+        "diagnostics_races", filters, query_diagnostics_races, page
+    )
 
 
 @app.get("/api/diagnostics/winner-ranks")
-def api_diagnostics_winner_ranks(date: str | None = None, track: str | None = None,
-                                 model: str | None = None, race_type: str | None = None,
-                                 distance: str | None = None, surface: str | None = None,
-                                 field_size: str | None = None):
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
-    return {"rows": _performance_cached("diagnostics_ranks", filters, query_diagnostics_winner_ranks)}
+def api_diagnostics_winner_ranks(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
+    return {
+        "rows": _performance_cached(
+            "diagnostics_ranks", filters, query_diagnostics_winner_ranks
+        )
+    }
 
 
 @app.get("/api/diagnostics/groups")
-def api_diagnostics_groups(date: str | None = None, track: str | None = None,
-                           model: str | None = None, race_type: str | None = None,
-                           distance: str | None = None, surface: str | None = None,
-                           field_size: str | None = None):
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
-    return {"rows": _performance_cached("diagnostics_groups", filters, query_diagnostics_groups)}
+def api_diagnostics_groups(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
+    return {
+        "rows": _performance_cached(
+            "diagnostics_groups", filters, query_diagnostics_groups
+        )
+    }
 
 
 @app.get("/api/diagnostics/extremes")
-def api_diagnostics_extremes(date: str | None = None, track: str | None = None,
-                             model: str | None = None, race_type: str | None = None,
-                             distance: str | None = None, surface: str | None = None,
-                             field_size: str | None = None):
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
-    return _performance_cached("diagnostics_extremes", filters, query_diagnostics_extremes)
+def api_diagnostics_extremes(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
+    return _performance_cached(
+        "diagnostics_extremes", filters, query_diagnostics_extremes
+    )
 
 
 @app.get("/api/diagnostics/filters")
 def api_diagnostics_filters(model: str = "Ensemble"):
     filters = _diagnostics_args(model=model)
-    return _performance_cached("diagnostics_filters", filters,
-                               lambda connection, _: query_diagnostics_filters(connection, model))
+    return _performance_cached(
+        "diagnostics_filters",
+        filters,
+        lambda connection, _: query_diagnostics_filters(connection, model),
+    )
 
 
 @app.get("/api/diagnostics/feature-contribution")
@@ -699,20 +1036,32 @@ def api_diagnostics_race_detail(race_id: str, model: str = "Ensemble"):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     detail = _performance_cached(
-        "diagnostics_race_detail", {"race_id": race_id, "model": filters["model"]},
-        lambda connection, _: query_diagnostics_race_detail(connection, race_id, str(filters["model"])),
+        "diagnostics_race_detail",
+        {"race_id": race_id, "model": filters["model"]},
+        lambda connection, _: query_diagnostics_race_detail(
+            connection, race_id, str(filters["model"])
+        ),
     )
     if detail is None:
-        raise HTTPException(status_code=404, detail="Evaluated Turkish race was not found")
+        raise HTTPException(
+            status_code=404, detail="Evaluated Turkish race was not found"
+        )
     return detail
 
 
 @app.get("/api/diagnostics/export.csv")
-def api_diagnostics_export(date: str | None = None, track: str | None = None,
-                           model: str | None = None, race_type: str | None = None,
-                           distance: str | None = None, surface: str | None = None,
-                           field_size: str | None = None):
-    filters = _diagnostics_args(date, track, model, race_type, distance, surface, field_size)
+def api_diagnostics_export(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    race_type: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+):
+    filters = _diagnostics_args(
+        date, track, model, race_type, distance, surface, field_size
+    )
 
     def stream():
         with readonly_connection() as connection:
@@ -723,173 +1072,454 @@ def api_diagnostics_export(date: str | None = None, track: str | None = None,
                 return
             buffer = io.StringIO()
             writer = csv.DictWriter(buffer, fieldnames=list(first))
-            writer.writeheader(); writer.writerow(first)
+            writer.writeheader()
+            writer.writerow(first)
             yield "\ufeff" + buffer.getvalue()
             for row in rows:
-                buffer.seek(0); buffer.truncate(0); writer.writerow(row); yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+                writer.writerow(row)
+                yield buffer.getvalue()
 
     filename = f"model_diagnostics_{filters.get('date') or 'all'}.csv"
-    return StreamingResponse(stream(), media_type="text/csv; charset=utf-8",
-                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return StreamingResponse(
+        stream(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
-def _bet_filters(date=None, track=None, model="Ensemble", outcome="all", stake=20, race_no=None):
+def _bet_filters(
+    date=None, track=None, model="Ensemble", outcome="all", stake=20, race_no=None
+):
     try:
-        return normalize_bet_filters(date, track, model, outcome, stake, race_no=race_no)
+        return normalize_bet_filters(
+            date, track, model, outcome, stake, race_no=race_no
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/bet-simulator/summary")
-def api_bet_summary(date: str | None = None, track: str | None = None, model: str = "Ensemble",
-                    outcome: str = "all", stake: float = 20, race_no: str | None = None):
-    filters=_bet_filters(date,track,model,outcome,stake,race_no)
-    return _performance_cached("bet_summary",filters,query_bet_summary)
+def api_bet_summary(
+    date: str | None = None,
+    track: str | None = None,
+    model: str = "Ensemble",
+    outcome: str = "all",
+    stake: float = 20,
+    race_no: str | None = None,
+):
+    filters = _bet_filters(date, track, model, outcome, stake, race_no)
+    return _performance_cached("bet_summary", filters, query_bet_summary)
 
 
 @app.get("/api/bet-simulator/history")
-def api_bet_history(page: int = 1, date: str | None = None, track: str | None = None,
-                    model: str = "Ensemble", outcome: str = "all", stake: float = 20, race_no: str | None = None):
-    if page<1: raise HTTPException(status_code=400,detail="page must be >= 1")
-    filters=_bet_filters(date,track,model,outcome,stake,race_no)
-    return _performance_cached("bet_history",filters,query_bet_history,page)
+def api_bet_history(
+    page: int = 1,
+    date: str | None = None,
+    track: str | None = None,
+    model: str = "Ensemble",
+    outcome: str = "all",
+    stake: float = 20,
+    race_no: str | None = None,
+):
+    if page < 1:
+        raise HTTPException(status_code=400, detail="page must be >= 1")
+    filters = _bet_filters(date, track, model, outcome, stake, race_no)
+    return _performance_cached("bet_history", filters, query_bet_history, page)
 
 
 @app.get("/api/bet-simulator/model-comparison")
-def api_bet_model_comparison(date: str | None = None, track: str | None = None,
-                             model: str | None = None, outcome: str = "all",
-                             stake: float = 20, race_no: str | None = None):
-    selected = model if model and model.upper() != "ALL" else "Ensemble,Logistic,CatBoost,XGBoost"
+def api_bet_model_comparison(
+    date: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    outcome: str = "all",
+    stake: float = 20,
+    race_no: str | None = None,
+):
+    selected = (
+        model
+        if model and model.upper() != "ALL"
+        else "Ensemble,Logistic,CatBoost,XGBoost"
+    )
     filters = _bet_filters(date, track, selected, outcome, stake, race_no)
-    return _performance_cached("bet_model_comparison", filters, query_bet_model_comparison)
+    return _performance_cached(
+        "bet_model_comparison", filters, query_bet_model_comparison
+    )
 
 
 @app.get("/api/bet-simulator/export.csv")
-def api_bet_export(date: str | None = None, track: str | None = None, model: str = "Ensemble",
-                   outcome: str = "all", stake: float = 20, race_no: str | None = None):
-    filters=_bet_filters(date,track,model,outcome,stake,race_no)
+def api_bet_export(
+    date: str | None = None,
+    track: str | None = None,
+    model: str = "Ensemble",
+    outcome: str = "all",
+    stake: float = 20,
+    race_no: str | None = None,
+):
+    filters = _bet_filters(date, track, model, outcome, stake, race_no)
+
     def stream():
         with readonly_connection() as connection:
-            rows=iter(query_bet_export(connection,filters)); first=next(rows,None)
-            if first is None: yield "race_id\n"; return
-            buffer=io.StringIO(); writer=csv.DictWriter(buffer,fieldnames=list(first)); writer.writeheader();writer.writerow(first)
-            yield "\ufeff"+buffer.getvalue()
-            for row in rows: buffer.seek(0);buffer.truncate(0);writer.writerow(row);yield buffer.getvalue()
-    return StreamingResponse(stream(),media_type="text/csv; charset=utf-8",
-                             headers={"Content-Disposition":'attachment; filename="bet_simulator.csv"'})
+            rows = iter(query_bet_export(connection, filters))
+            first = next(rows, None)
+            if first is None:
+                yield "race_id\n"
+                return
+            buffer = io.StringIO()
+            writer = csv.DictWriter(buffer, fieldnames=list(first))
+            writer.writeheader()
+            writer.writerow(first)
+            yield "\ufeff" + buffer.getvalue()
+            for row in rows:
+                buffer.seek(0)
+                buffer.truncate(0)
+                writer.writerow(row)
+                yield buffer.getvalue()
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="bet_simulator.csv"'},
+    )
 
 
-def _shadow_args(date_from=None, date_to=None, track=None, model=None, distance=None,
-                 surface=None, field_size=None, evaluated_only=True, odds_only=False):
+def _shadow_args(
+    date_from=None,
+    date_to=None,
+    track=None,
+    model=None,
+    distance=None,
+    surface=None,
+    field_size=None,
+    evaluated_only=True,
+    odds_only=False,
+):
     end = date_to or server_today()
     start = date_from or (
         datetime.strptime(end, "%Y-%m-%d") - timedelta(days=89)
     ).strftime("%Y-%m-%d")
     try:
         return normalize_shadow_filters(
-            start, end, track, model, distance, surface, field_size,
-            evaluated_only, odds_only,
+            start,
+            end,
+            track,
+            model,
+            distance,
+            surface,
+            field_size,
+            evaluated_only,
+            odds_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _shadow_endpoint(query, cache_name, date_from=None, date_to=None, track=None,
-                     model=None, distance=None, surface=None, field_size=None,
-                     evaluated_only=True, odds_only=False):
+def _shadow_endpoint(
+    query,
+    cache_name,
+    date_from=None,
+    date_to=None,
+    track=None,
+    model=None,
+    distance=None,
+    surface=None,
+    field_size=None,
+    evaluated_only=True,
+    odds_only=False,
+):
     filters = _shadow_args(
-        date_from, date_to, track, model, distance, surface, field_size,
-        evaluated_only, odds_only,
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
     )
     return _performance_cached(cache_name, filters, query)
 
 
 @app.get("/api/shadow-monitor/summary")
-def api_shadow_summary(date_from: str | None = None, date_to: str | None = None,
-                       track: str | None = None, model: str | None = None,
-                       distance: str | None = None, surface: str | None = None,
-                       field_size: str | None = None, evaluated_only: bool = True,
-                       odds_only: bool = False):
-    return _shadow_endpoint(query_shadow_summary, "shadow_summary", date_from, date_to,
-                            track, model, distance, surface, field_size,
-                            evaluated_only, odds_only)
+def api_shadow_summary(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
+    return _shadow_endpoint(
+        query_shadow_summary,
+        "shadow_summary",
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
+    )
 
 
 @app.get("/api/shadow-monitor/models")
-def api_shadow_models(date_from: str | None = None, date_to: str | None = None,
-                      track: str | None = None, model: str | None = None,
-                      distance: str | None = None, surface: str | None = None,
-                      field_size: str | None = None, evaluated_only: bool = True,
-                      odds_only: bool = False):
-    return _shadow_endpoint(query_shadow_models, "shadow_models", date_from, date_to,
-                            track, model, distance, surface, field_size,
-                            evaluated_only, odds_only)
+def api_shadow_models(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
+    return _shadow_endpoint(
+        query_shadow_models,
+        "shadow_models",
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
+    )
 
 
 @app.get("/api/shadow-monitor/segments")
-def api_shadow_segments(date_from: str | None = None, date_to: str | None = None,
-                        track: str | None = None, model: str | None = None,
-                        distance: str | None = None, surface: str | None = None,
-                        field_size: str | None = None, evaluated_only: bool = True,
-                        odds_only: bool = False):
-    return _shadow_endpoint(query_shadow_segments, "shadow_segments", date_from, date_to,
-                            track, model, distance, surface, field_size,
-                            evaluated_only, odds_only)
+def api_shadow_segments(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
+    return _shadow_endpoint(
+        query_shadow_segments,
+        "shadow_segments",
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
+    )
 
 
 @app.get("/api/shadow-monitor/trends")
-def api_shadow_trends(date_from: str | None = None, date_to: str | None = None,
-                      track: str | None = None, model: str | None = None,
-                      distance: str | None = None, surface: str | None = None,
-                      field_size: str | None = None, evaluated_only: bool = True,
-                      odds_only: bool = False):
-    return _shadow_endpoint(query_shadow_trends, "shadow_trends", date_from, date_to,
-                            track, model, distance, surface, field_size,
-                            evaluated_only, odds_only)
+def api_shadow_trends(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
+    return _shadow_endpoint(
+        query_shadow_trends,
+        "shadow_trends",
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
+    )
 
 
 @app.get("/api/shadow-monitor/health")
-def api_shadow_health(date_from: str | None = None, date_to: str | None = None,
-                      track: str | None = None, model: str | None = None,
-                      distance: str | None = None, surface: str | None = None,
-                      field_size: str | None = None, evaluated_only: bool = True,
-                      odds_only: bool = False):
-    return _shadow_endpoint(query_shadow_health, "shadow_health", date_from, date_to,
-                            track, model, distance, surface, field_size,
-                            evaluated_only, odds_only)
+def api_shadow_health(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
+    return _shadow_endpoint(
+        query_shadow_health,
+        "shadow_health",
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
+    )
 
 
 @app.get("/api/shadow-monitor/export.csv")
-def api_shadow_export(date_from: str | None = None, date_to: str | None = None,
-                      track: str | None = None, model: str | None = None,
-                      distance: str | None = None, surface: str | None = None,
-                      field_size: str | None = None, evaluated_only: bool = True,
-                      odds_only: bool = False):
+def api_shadow_export(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    track: str | None = None,
+    model: str | None = None,
+    distance: str | None = None,
+    surface: str | None = None,
+    field_size: str | None = None,
+    evaluated_only: bool = True,
+    odds_only: bool = False,
+):
     filters = _shadow_args(
-        date_from, date_to, track, model, distance, surface, field_size,
-        evaluated_only, odds_only,
+        date_from,
+        date_to,
+        track,
+        model,
+        distance,
+        surface,
+        field_size,
+        evaluated_only,
+        odds_only,
     )
     with readonly_connection() as connection:
         content = query_shadow_export(connection, filters)
     return PlainTextResponse(
-        "\ufeff" + content, media_type="text/csv; charset=utf-8",
+        "\ufeff" + content,
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="shadow_monitor.csv"'},
     )
 
 
+@app.get("/tjk-results", response_class=HTMLResponse)
+def tjk_results_page(request: Request, date: str | None = None):
+    return TEMPLATES.TemplateResponse(
+        request, "tjk_results.html", {"selected_date": _page_date(date)}
+    )
+
+
+@app.get("/api/tjk-results")
+def api_tjk_results(
+    date: str | None = None, city: str | None = None, force_refresh: bool = False
+):
+    """TJK günlük sonuçlarını çekip model tahminleriyle karşılaştırır. SQLite cache kullanır."""
+    from datetime import date as _date
+
+    if date:
+        try:
+            target = _date.fromisoformat(_page_date(date))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        target = _date.fromisoformat(server_today())
+    cities = [city] if city else None
+    try:
+        result = compare_predictions_with_tjk(
+            str(DB_PATH), target, cities, force_refresh=force_refresh
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"TJK fetch failed: {exc}") from exc
+    return result
+
+
+@app.get("/api/storage-status")
+def api_storage_status():
+    """Disk kullanımı, dizin boyutları ve son temizlik özeti."""
+    import json as _json
+
+    from storage_manager import get_dir_sizes, get_disk_usage
+
+    disk = get_disk_usage(PROJECT_ROOT)
+    dirs = get_dir_sizes(PROJECT_ROOT)
+
+    # Son storage raporu
+    report_path = REPORTS_DIR / "storage_report.json"
+    last_report: dict = {}
+    if report_path.is_file():
+        try:
+            last_report = _json.loads(report_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    retention = last_report.get("retention", {})
+    caches = last_report.get("caches", {})
+    vacuum = last_report.get("vacuum", {})
+    freed_bytes = retention.get("freed_bytes", 0) + caches.get("freed_bytes", 0)
+    vacuum_saved_mb = vacuum.get("saved_mb", 0) if vacuum else 0
+
+    return {
+        "disk": disk,
+        "dirs": {
+            k: {
+                "size_bytes": v,
+                "size_mb": round(v / 1024**2, 1),
+                "size_gb": round(v / 1024**3, 2),
+            }
+            for k, v in sorted(dirs.items(), key=lambda x: x[1], reverse=True)
+            if v > 0
+        },
+        "last_run_at": last_report.get("run_at"),
+        "delete_mode": last_report.get("delete_mode", False),
+        "freed_mb": round(freed_bytes / 1024**2, 1),
+        "vacuum_saved_mb": round(vacuum_saved_mb, 1),
+        "files_deleted": len(retention.get("deleted", [])),
+        "alert": last_report.get("alert", disk["used_percent"] >= 80),
+        "alert_threshold": last_report.get("alert_threshold", 80),
+    }
+
+
+@app.get("/api/disk-status")
+def api_disk_status():
+    """Alias for /api/storage-status (backward compat)."""
+    return api_storage_status()
+
+
 def self_check() -> dict[str, Any]:
-    required_templates = ("base.html", "dashboard.html", "races.html", "predictions.html",
-                          "performance.html", "diagnostics.html", "diagnostics_race.html",
-                          "bet_simulator.html", "shadow_monitor.html",
-                          "reports.html", "logs.html")
+    required_templates = (
+        "base.html",
+        "dashboard.html",
+        "races.html",
+        "predictions.html",
+        "performance.html",
+        "diagnostics.html",
+        "diagnostics_race.html",
+        "bet_simulator.html",
+        "shadow_monitor.html",
+        "reports.html",
+        "logs.html",
+    )
     with readonly_connection() as connection:
         db_ok = connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
         query_only = connection.execute("PRAGMA query_only").fetchone()[0] == 1
     return {
         "database_readable": db_ok,
         "database_query_only": query_only,
-        "templates_present": all((WEB_ROOT / "templates" / name).is_file() for name in required_templates),
-        "static_present": all((WEB_ROOT / "static" / name).is_file() for name in ("style.css", "live-results.js")),
+        "templates_present": all(
+            (WEB_ROOT / "templates" / name).is_file() for name in required_templates
+        ),
+        "static_present": all(
+            (WEB_ROOT / "static" / name).is_file()
+            for name in ("style.css", "live-results.js")
+        ),
         "basic_auth_configured": bool(WEB_USERNAME and WEB_PASSWORD),
     }
 

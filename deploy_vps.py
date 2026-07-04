@@ -1,12 +1,7 @@
-import sys
-import paramiko
 import os
 import glob
-from stat import S_ISDIR, S_ISREG
+from vps_ssh import connect_vps
 
-VPS_HOST = "5.175.136.118"
-VPS_USER = "root"
-VPS_PASSWORD = "!AhXHA9YHWg4Fv9"
 REMOTE_TMP_DIR = "/tmp/deploy_at_yaris"
 APP_DIR = "/opt/at_yaris_tahmini"
 
@@ -22,11 +17,9 @@ def main():
     bundle_name = os.path.basename(bundle_path)
     print(f"Deploying bundle: {bundle_path}")
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh = connect_vps()
     
     try:
-        ssh.connect(VPS_HOST, username=VPS_USER, password=VPS_PASSWORD, timeout=10)
         print("Connected via SSH")
         
         # Create tmp directory

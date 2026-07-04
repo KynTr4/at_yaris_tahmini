@@ -29,7 +29,15 @@ chmod +x backup_daily.sh
 install -m 644 deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 install -m 644 deploy/logrotate/at-yaris-tahmini /etc/logrotate.d/at-yaris-tahmini
 systemctl daemon-reload
-systemctl enable --now at-yaris-daily.timer at-yaris-agf-update.timer at-yaris-results-update.timer at-yaris-live-results.timer at-yaris-race-freeze.timer at-yaris-backup.timer
+systemctl enable --now \
+    at-yaris-daily.timer \
+    at-yaris-agf-update.timer \
+    at-yaris-results-update.timer \
+    at-yaris-live-results.timer \
+    at-yaris-race-freeze.timer \
+    at-yaris-backup.timer \
+    at-yaris-cleanup.timer \
+    at-yaris-storage-manager.timer
 systemctl enable --now at-yaris-web.service
 
 sudo -u at_yaris .venv/bin/python web_app.py --check
