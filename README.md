@@ -28,7 +28,8 @@
 - [Contributing](#contributing)
 - [License](#license)
 - [Disclaimer](#disclaimer)
-- [Existing Technical Documentation](#existing-technical-documentation)
+- [Technical Documentation](#technical-documentation)
+- [Project Documents](#project-documents)
 
 ---
 
@@ -363,9 +364,11 @@ Horse racing predictions are probabilistic estimates based on historical data an
 
 ---
 
-# Existing Technical Documentation
+## Technical Documentation
 
-The following sections contain the complete technical documentation for the project.
+Detailed technical documentation is being organized and will be expanded over time.
+
+Current documentation areas:
 
 - Public API mode
 - Endpoint catalog
@@ -377,6 +380,8 @@ The following sections contain the complete technical documentation for the proj
 - Backup system
 - Cleanup
 - Production deployment
+
+---
 
 ## Project Documents
 
