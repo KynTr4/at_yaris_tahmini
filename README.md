@@ -377,3 +377,10 @@ The following sections contain the complete technical documentation for the proj
 - Backup system
 - Cleanup
 - Production deployment
+
+## Project Documents
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Security Policy](SECURITY.md)
+- [License](LICENSE)
